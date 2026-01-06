@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Entornos
+.venv/
+env/
+
+# Excel temporales
+~lock*.xlsx#
+*_tmp.xlsx
+output/
+
+# Sistema
+.DS_Store
+Thumbs.db
