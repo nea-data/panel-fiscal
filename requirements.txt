@@ -5,3 +5,5 @@ zeep
 lxml
 pyopenssl
 cryptography
+openpyxl
+xlsxwriter
