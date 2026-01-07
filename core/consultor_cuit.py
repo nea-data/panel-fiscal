@@ -35,15 +35,14 @@ def consultar_cuit(cuit: str) -> dict:
     # -------------------------
     # AUTENTICACIÓN WSAA
     # -------------------------
-    try:
-        ta = obtener_o_generar_ta()
-        token = ta["token"]
-        sign = ta["sign"]
-    except Exception as e:
-        return {
-            "CUIT": cuit_norm,
-            "Error": f"No se pudo autenticar con AFIP (WSAA): {e}"
-        }
+   try:
+    token, sign = obtener_o_generar_ta()
+     except Exception as e:
+       return {
+        "CUIT": cuit_norm,
+        "Error": f"No se pudo autenticar con AFIP (WSAA): {e}"
+    }
+
 
     # -------------------------
     # CONSULTA PADRÓN A5
