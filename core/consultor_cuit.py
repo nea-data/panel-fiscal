@@ -35,14 +35,13 @@ def consultar_cuit(cuit: str) -> dict:
     # -------------------------
     # AUTENTICACIÓN WSAA
     # -------------------------
-   try:
-    token, sign = obtener_o_generar_ta()
-     except Exception as e:
-       return {
-        "CUIT": cuit_norm,
-        "Error": f"No se pudo autenticar con AFIP (WSAA): {e}"
-    }
-
+    try:
+        token, sign = obtener_o_generar_ta()
+    except Exception as e:
+        return {
+            "CUIT": cuit_norm,
+            "Error": f"No se pudo autenticar con AFIP (WSAA): {e}"
+        }
 
     # -------------------------
     # CONSULTA PADRÓN A5
@@ -69,7 +68,6 @@ def consultar_cuit(cuit: str) -> dict:
             "Error": "Sin resultados en AFIP"
         }
 
-    # 🔹 Normalizar: a veces AFIP devuelve un solo objeto
     if not isinstance(personas, list):
         personas = [personas]
 
@@ -89,9 +87,9 @@ def consultar_cuit(cuit: str) -> dict:
     apellido = getattr(datos, "apellido", "") or ""
     nombre_completo = f"{nombre} {apellido}".strip()
 
-    # ======================================================
+    # -------------------------
     # ACTIVIDADES
-    # ======================================================
+    # -------------------------
     actividades = []
 
     if hasattr(persona, "datosRegimenGeneral") and hasattr(
@@ -127,9 +125,9 @@ def consultar_cuit(cuit: str) -> dict:
 
     actividades_secundarias = actividades_secundarias[:4]
 
-    # ======================================================
+    # -------------------------
     # RESPUESTA FINAL
-    # ======================================================
+    # -------------------------
     return {
         "CUIT": cuit_norm,
         "Razón Social / Nombre": razon_social or nombre_completo,
@@ -142,4 +140,3 @@ def consultar_cuit(cuit: str) -> dict:
         "Actividad Secundaria 3": actividades_secundarias[2] if len(actividades_secundarias) > 2 else "",
         "Actividad Secundaria 4": actividades_secundarias[3] if len(actividades_secundarias) > 3 else "",
     }
-
