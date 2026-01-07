@@ -1,67 +1,82 @@
 import base64
-import tempfile
 from datetime import datetime, timedelta
+import tempfile
+
 import streamlit as st
-from OpenSSL import crypto
+from lxml import etree
 from zeep import Client
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.x509 import load_pem_x509_certificate
+
+
+# ======================================================
+# CONFIG AFIP
+# ======================================================
 AFIP_CUIT = st.secrets["AFIP_CUIT"]
 WSAA_WSDL = st.secrets["AFIP_WSAA_URL"]
 SERVICE = "ws_sr_constancia_inscripcion"
 
-# ======================================================
-# UTILIDAD: escribir certs en /tmp
-# ======================================================
-def _write_tmp_file(content: str, suffix: str) -> str:
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    f.write(content.encode("utf-8"))
-    f.close()
-    return f.name
 
 # ======================================================
-# GENERAR TA (CACHEADO)
+# FIRMAR LOGIN TICKET (cryptography)
 # ======================================================
-@st.cache_data(ttl=60 * 60 * 11)  # 11 horas
-def generar_ta():
-    cert_path = _write_tmp_file(st.secrets["AFIP_CERT"], ".crt")
-    key_path = _write_tmp_file(st.secrets["AFIP_KEY"], ".key")
+def _firmar_login_ticket(xml: bytes) -> str:
+    cert_pem = st.secrets["AFIP_CERT_PEM"].encode()
+    key_pem = st.secrets["AFIP_KEY_PEM"].encode()
+
+    cert = load_pem_x509_certificate(cert_pem)
+    private_key = serialization.load_pem_private_key(
+        key_pem,
+        password=None
+    )
+
+    signature = private_key.sign(
+        xml,
+        padding.PKCS1v15(),
+        hashes.SHA256()
+    )
+
+    return base64.b64encode(signature).decode()
+
+
+# ======================================================
+# GENERAR CMS
+# ======================================================
+def _generar_cms() -> str:
+    now = datetime.utcnow()
 
     login_ticket = f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
     <header>
-        <uniqueId>{int(datetime.now().timestamp())}</uniqueId>
-        <generationTime>{(datetime.now() - timedelta(minutes=10)).isoformat()}</generationTime>
-        <expirationTime>{(datetime.now() + timedelta(hours=12)).isoformat()}</expirationTime>
+        <uniqueId>{int(now.timestamp())}</uniqueId>
+        <generationTime>{(now - timedelta(minutes=5)).isoformat()}</generationTime>
+        <expirationTime>{(now + timedelta(minutes=5)).isoformat()}</expirationTime>
     </header>
     <service>{SERVICE}</service>
 </loginTicketRequest>
-"""
+""".encode("utf-8")
 
-    cert = crypto.load_certificate(
-        crypto.FILETYPE_PEM, open(cert_path, "rb").read()
-    )
-    key = crypto.load_privatekey(
-        crypto.FILETYPE_PEM, open(key_path, "rb").read()
-    )
+    return _firmar_login_ticket(login_ticket)
 
-    pkcs7 = crypto.sign(
-        cert,
-        key,
-        login_ticket.encode(),
-        "sha256",
-        crypto.PKCS7_BINARY | crypto.PKCS7_DETACHED
-    )
 
-    cms = base64.b64encode(pkcs7).decode()
+# ======================================================
+# OBTENER TOKEN + SIGN (CACHEADO)
+# ======================================================
+@st.cache_data(ttl=60 * 60 * 11)  # 11 horas
+def obtener_o_generar_ta():
+    cms = _generar_cms()
 
     client = Client(WSAA_WSDL)
     response = client.service.loginCms(cms)
 
-    if not response or not response.credentials:
-        raise RuntimeError("AFIP WSAA no devolvió credenciales")
+    tree = etree.fromstring(response.encode())
+    token = tree.findtext(".//token")
+    sign = tree.findtext(".//sign")
 
-    return {
-        "token": response.credentials.token,
-        "sign": response.credentials.sign,
-        "expirationTime": response.credentials.expirationTime,
-    }
+    if not token or not sign:
+        raise RuntimeError("AFIP WSAA no devolvió token/sign")
+
+    return token, sign
+
