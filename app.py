@@ -362,59 +362,72 @@ elif seccion == "📤 Emitidos / Recibidos":
 
     st.markdown("## 📤 Envío de pedido · Emitidos / Recibidos")
     st.markdown(
-        "<div class='subtitulo'>Procesamiento controlado · 24 hs hábiles</div>",
+        "<div class='subtitulo'>Procesamiento controlado · hasta 24 hs hábiles</div>",
         unsafe_allow_html=True
     )
     st.markdown("---")
 
-    user = st.experimental_user
-    email_usuario = user.email if user else "no_disponible"
-
-    st.info(f"📧 Pedido asociado al mail: **{email_usuario}**")
+    st.info(
+        "📨 Este formulario permite **enviar un pedido de procesamiento** a NEA DATA.\n\n"
+        "El archivo será analizado y los resultados se entregarán una vez finalizado el proceso."
+    )
 
     # -------------------------------
     # DESCARGAR PLANTILLA
     # -------------------------------
+    st.markdown("### Paso 1 · Descargar plantilla")
+
     plantilla = Path("templates/clientes.xlsx")
 
     if plantilla.exists():
         with open(plantilla, "rb") as f:
             st.download_button(
-                "⬇️ Descargar plantilla",
+                label="⬇️ Descargar plantilla Excel",
                 data=f,
-                file_name="clientes.xlsx"
+                file_name="clientes.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
     else:
-        st.warning("⚠️ No se encontró la plantilla base.")
+        st.error("❌ No se encontró la plantilla base. Contactá a NEA DATA.")
 
     st.markdown("---")
 
     # -------------------------------
     # SUBIR EXCEL
     # -------------------------------
+    st.markdown("### Paso 2 · Subir archivo completo")
+
     archivo = st.file_uploader(
-        "📤 Subí el Excel completo",
-        type=["xlsx"]
+        "Subí el Excel completo con los datos a procesar",
+        type=["xlsx"],
+        help="El archivo será procesado por NEA DATA dentro de las próximas 24 hs hábiles.",
     )
 
-    if archivo:
-        df_preview = pd.read_excel(archivo, dtype=str)
-        st.markdown("###  Vista previa")
-        st.dataframe(df_preview, use_container_width=True)
+    if archivo is not None:
+        try:
+            df_preview = pd.read_excel(archivo, dtype=str)
+            st.success("📎 Archivo recibido correctamente.")
 
-        # Si vos ya tenés el core.mailer, lo dejamos tal cual
-        if st.button("📨 Enviar pedido"):
-            from core.mailer import enviar_pedido
+            st.markdown("#### Vista previa (primeras filas)")
+            st.dataframe(df_preview.head(50), use_container_width=True)
 
-            enviar_pedido(
-                archivo=archivo,
-                email_usuario=email_usuario
-            )
+            st.markdown("---")
 
-            st.success("✅ Pedido enviado correctamente")
-            st.info(
-                "El procesamiento se realizará dentro de las 24/48 hs hábiles. "
-                "Los resultados se entregarán por correo."
+            if st.button("📨 Enviar pedido"):
+                from core.mailer import enviar_pedido
+
+                enviar_pedido(archivo=archivo)
+
+                st.success("✅ Pedido registrado correctamente.")
+                st.info(
+                    "⏳ El procesamiento se realizará dentro de las próximas **24 hs hábiles**.\n\n"
+                    "Una vez finalizado, recibirás el resultado por los canales habituales."
+                )
+
+        except Exception:
+            st.error(
+                "❌ No se pudo leer el archivo.\n\n"
+                "Verificá que el Excel tenga el formato correcto y volvé a intentarlo."
             )
 
 # ======================================================
