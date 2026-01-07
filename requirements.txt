@@ -3,7 +3,6 @@ pandas
 requests
 zeep
 lxml
-pyopenssl
 cryptography
 openpyxl
 xlsxwriter
