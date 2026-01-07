@@ -157,6 +157,80 @@ if seccion == "📅 Panel Fiscal":
     )
 
     st.dataframe(resumen_org, hide_index=True, use_container_width=True)
+    st.markdown("---")
+
+    # ======================================================
+    # DETALLE DE VENCIMIENTOS POR ORGANISMO
+    # ======================================================
+    st.markdown("## 📅 Detalle de vencimientos")
+
+    colA, colB = st.columns(2)
+    colC, colD = st.columns(2)
+
+    def render_detalle(titulo, filtro, col):
+        with col:
+            st.markdown(titulo)
+            if filtro.empty:
+                st.info("Sin vencimientos este mes.")
+            else:
+                st.dataframe(
+                    filtro[["terminacion", "vencimiento"]]
+                    .rename(columns={
+                        "terminacion": "Terminación CUIT",
+                        "vencimiento": "Vencimiento"
+                    }),
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+    if "ARCA" in seleccion:
+        render_detalle(
+            "### 🔵 ARCA",
+            df[df["organismo"] == "ARCA"],
+            colA
+        )
+
+    if "DGR Corrientes · IIBB" in seleccion:
+        render_detalle(
+            "### 🟢 DGR Corrientes · IIBB",
+            df[
+                (df["organismo"] == "DGR") &
+                (df["impuesto"] == "IIBB")
+            ],
+            colB
+        )
+
+    if "ATP Chaco · IIBB" in seleccion:
+        render_detalle(
+            "### 🟠 ATP Chaco · IIBB",
+            df[
+                (df["organismo"] == "ATP(CHACO)") &
+                (df["impuesto"] == "IIBB")
+            ],
+            colC
+        )
+
+    if "Tasa Municipal Corrientes" in seleccion:
+        render_detalle(
+            "### 🟣 Tasa Municipal · Corrientes",
+            df[
+                (df["organismo"] == "ACOR") &
+                (df["impuesto"] == "TS")
+            ],
+            colD
+        )
+
+    # ======================================================
+    # LEYENDA
+    # ======================================================
+    st.markdown("---")
+    st.markdown("""
+    ⚪ **Cumplido** &nbsp;&nbsp;
+    🔴 **Vence hoy / mañana** &nbsp;&nbsp;
+    🟡 **Próximos días** &nbsp;&nbsp;
+    🟢 **En regla**
+    """)
+
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
