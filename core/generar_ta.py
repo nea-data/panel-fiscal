@@ -1,82 +1,79 @@
 import base64
-from datetime import datetime, timedelta
 import tempfile
+from datetime import datetime, timedelta
 
 import streamlit as st
-from lxml import etree
+from OpenSSL import crypto
 from zeep import Client
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.x509 import load_pem_x509_certificate
-
-
 # ======================================================
-# CONFIG AFIP
+# CONFIG AFIP (SECRETS)
 # ======================================================
 AFIP_CUIT = st.secrets["AFIP_CUIT"]
 WSAA_WSDL = st.secrets["AFIP_WSAA_URL"]
 SERVICE = "ws_sr_constancia_inscripcion"
 
+CERT_PEM = st.secrets["AFIP_CERT"]
+KEY_PEM  = st.secrets["AFIP_KEY"]
 
 # ======================================================
-# FIRMAR LOGIN TICKET (cryptography)
+# UTILIDAD: escribir cert/key temporales
 # ======================================================
-def _firmar_login_ticket(xml: bytes) -> str:
-    cert_pem = st.secrets["AFIP_CERT_PEM"].encode()
-    key_pem = st.secrets["AFIP_KEY_PEM"].encode()
-
-    cert = load_pem_x509_certificate(cert_pem)
-    private_key = serialization.load_pem_private_key(
-        key_pem,
-        password=None
-    )
-
-    signature = private_key.sign(
-        xml,
-        padding.PKCS1v15(),
-        hashes.SHA256()
-    )
-
-    return base64.b64encode(signature).decode()
-
+def _write_tmp_file(content: str, suffix: str) -> str:
+    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    f.write(content.encode("utf-8"))
+    f.close()
+    return f.name
 
 # ======================================================
-# GENERAR CMS
+# OBTENER / GENERAR TA (CACHEADO)
 # ======================================================
-def _generar_cms() -> str:
-    now = datetime.utcnow()
+@st.cache_data(ttl=60 * 60 * 11)  # 11 horas
+def obtener_o_generar_ta():
+    cert_path = _write_tmp_file(CERT_PEM, ".crt")
+    key_path  = _write_tmp_file(KEY_PEM, ".key")
 
     login_ticket = f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
     <header>
-        <uniqueId>{int(now.timestamp())}</uniqueId>
-        <generationTime>{(now - timedelta(minutes=5)).isoformat()}</generationTime>
-        <expirationTime>{(now + timedelta(minutes=5)).isoformat()}</expirationTime>
+        <uniqueId>{int(datetime.now().timestamp())}</uniqueId>
+        <generationTime>{(datetime.now() - timedelta(minutes=10)).isoformat()}</generationTime>
+        <expirationTime>{(datetime.now() + timedelta(hours=12)).isoformat()}</expirationTime>
     </header>
     <service>{SERVICE}</service>
 </loginTicketRequest>
-""".encode("utf-8")
+"""
 
-    return _firmar_login_ticket(login_ticket)
+    cert = crypto.load_certificate(
+        crypto.FILETYPE_PEM,
+        open(cert_path, "rb").read()
+    )
+    key = crypto.load_privatekey(
+        crypto.FILETYPE_PEM,
+        open(key_path, "rb").read()
+    )
 
+    # 🔐 FIRMA PKCS7 (CMS)
+    pkcs7 = crypto.sign(
+        cert,
+        key,
+        login_ticket.encode(),
+        "sha256",
+        crypto.PKCS7_BINARY | crypto.PKCS7_DETACHED
+    )
 
-# ======================================================
-# OBTENER TOKEN + SIGN (CACHEADO)
-# ======================================================
-@st.cache_data(ttl=60 * 60 * 11)  # 11 horas
-def obtener_o_generar_ta():
-    cms = _generar_cms()
+    cms = base64.b64encode(pkcs7).decode()
 
     client = Client(WSAA_WSDL)
     response = client.service.loginCms(cms)
 
-    tree = etree.fromstring(response.encode())
-    token = tree.findtext(".//token")
-    sign = tree.findtext(".//sign")
+    if not response or not response.credentials:
+        raise RuntimeError("AFIP WSAA no devolvió credenciales")
 
-    if not token or not sign:
-        raise RuntimeError("AFIP WSAA no devolvió token/sign")
+    return {
+        "token": response.credentials.token,
+        "sign": response.credentials.sign,
+        "expirationTime": response.credentials.expirationTime,
+    }
 
-    return token, sign
 
