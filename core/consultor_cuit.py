@@ -32,8 +32,10 @@ def consultar_cuit(cuit: str) -> dict:
             "Error": "CUIT inválido (debe tener 11 dígitos)"
         }
 
+    # -------------------------
+    # AUTENTICACIÓN WSAA
+    # -------------------------
     try:
-        # Obtener TA válido (cacheado)
         ta = obtener_o_generar_ta()
         token = ta["token"]
         sign = ta["sign"]
@@ -43,6 +45,9 @@ def consultar_cuit(cuit: str) -> dict:
             "Error": f"No se pudo autenticar con AFIP (WSAA): {e}"
         }
 
+    # -------------------------
+    # CONSULTA PADRÓN A5
+    # -------------------------
     try:
         client = Client(WSDL_PADRON, transport=ZEEP_TRANSPORT)
         respuesta = client.service.getPersonaList_v2(
@@ -58,11 +63,16 @@ def consultar_cuit(cuit: str) -> dict:
         }
 
     personas = getattr(respuesta, "persona", None)
+
     if not personas:
         return {
             "CUIT": cuit_norm,
             "Error": "Sin resultados en AFIP"
         }
+
+    # 🔹 Normalizar: a veces AFIP devuelve un solo objeto
+    if not isinstance(personas, list):
+        personas = [personas]
 
     persona = personas[0]
     datos = getattr(persona, "datosGenerales", None)
@@ -133,5 +143,4 @@ def consultar_cuit(cuit: str) -> dict:
         "Actividad Secundaria 3": actividades_secundarias[2] if len(actividades_secundarias) > 2 else "",
         "Actividad Secundaria 4": actividades_secundarias[3] if len(actividades_secundarias) > 3 else "",
     }
-
 
