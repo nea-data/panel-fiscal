@@ -336,7 +336,7 @@ elif seccion == "📤 Emitidos / Recibidos":
     )
 
     # --------------------------------------------------
-    # EJEMPLO VISUAL DEL EXCEL (NO DESCARGABLE)
+    # EJEMPLO VISUAL DEL EXCEL 
     # --------------------------------------------------
     with st.expander("📘 Ver ejemplo de cómo debe completarse el Excel", expanded=False):
 
