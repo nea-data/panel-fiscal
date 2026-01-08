@@ -342,11 +342,15 @@ elif seccion == "📤 Emitidos / Recibidos":
 
     if archivo:
         try:
+            # 🔍 Vista previa (esto consume el archivo)
             df_preview = pd.read_excel(archivo, dtype=str)
             st.dataframe(df_preview.head(50), use_container_width=True)
 
             if st.button("📨 Enviar pedido"):
                 from core.mailer import enviar_pedido
+
+                # 🔑 CLAVE: rebobinar el archivo antes de enviarlo
+                archivo.seek(0)
 
                 smtp_user = st.secrets["SMTP_USER"]
                 smtp_pwd = st.secrets["SMTP_APP_PASSWORD"]
@@ -364,6 +368,7 @@ elif seccion == "📤 Emitidos / Recibidos":
 
         except Exception:
             st.error("❌ No se pudo leer el archivo. Verificá el formato.")
+
 
 # ======================================================
 # FOOTER
