@@ -319,7 +319,10 @@ elif seccion == "🔎 Consultor de CUITs":
 elif seccion == "📤 Emitidos / Recibidos":
 
     st.markdown("## 📤 Envío de pedido · Emitidos / Recibidos")
-    st.markdown("<div class='subtitulo'>Procesamiento controlado · hasta 24 hs hábiles</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='subtitulo'>Procesamiento controlado · hasta 24 hs hábiles</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
 
     st.info(
@@ -341,7 +344,7 @@ elif seccion == "📤 Emitidos / Recibidos":
     archivo = st.file_uploader("Subí el Excel completo", type=["xlsx"])
 
     if archivo:
-        # ✅ 1) LECTURA DEL EXCEL (SOLO ESTO)
+        # 1️⃣ Vista previa
         try:
             df_preview = pd.read_excel(archivo, dtype=str)
             st.dataframe(df_preview.head(50), use_container_width=True)
@@ -349,23 +352,21 @@ elif seccion == "📤 Emitidos / Recibidos":
             st.error(f"❌ Error leyendo el Excel: {e}")
             st.stop()
 
-        # ✅ 2) ENVÍO DEL PEDIDO
+        # 2️⃣ Envío
         if st.button("📨 Enviar pedido"):
             try:
                 from core.mailer import enviar_pedido
 
-                # 🔑 rebobinar archivo
+                # rebobinar archivo
                 archivo.seek(0)
 
-                smtp_user = st.secrets["SMTP_USER"]
-                smtp_pwd = st.secrets["SMTP_APP_PASSWORD"]
-                notify_to = st.secrets["NOTIFY_TO"]
+                mail_cfg = st.secrets["gmail"]
 
                 enviar_pedido(
                     archivo=archivo,
-                    smtp_user=smtp_user,
-                    smtp_password=smtp_pwd,
-                    notify_to=notify_to,
+                    smtp_user=mail_cfg["SMTP_USER"],
+                    smtp_password=mail_cfg["SMTP_APP_PASSWORD"],
+                    notify_to=mail_cfg["NOTIFY_TO"],
                 )
 
                 st.success("✅ Pedido registrado correctamente.")
@@ -374,7 +375,6 @@ elif seccion == "📤 Emitidos / Recibidos":
             except Exception as e:
                 st.error("❌ Error al enviar el pedido.")
                 st.exception(e)
-
 
 
 # ======================================================
