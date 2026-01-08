@@ -326,51 +326,96 @@ elif seccion == "📤 Emitidos / Recibidos":
     st.markdown("---")
 
     st.info(
-        "📨 Este formulario permite **enviar un pedido de procesamiento** a NEA DATA.\n\n"
-        "El archivo será analizado y los resultados se entregarán una vez finalizado el proceso."
+        "📨 Este formulario permite **enviar un pedido de procesamiento fiscal** a NEA DATA.\n\n"
+        "🔐 La información enviada se utiliza **exclusivamente** para el procesamiento solicitado.\n"
+        "❗ **No almacenamos claves fiscales ni credenciales** de los contribuyentes.\n"
+        "📧 Los resultados se enviarán únicamente al correo indicado."
     )
 
-    plantilla = Path("templates/clientes.xlsx")
+    # --------------------------------------------------
+    # DESCARGA DE PLANTILLAS
+    # --------------------------------------------------
+    col1, col2 = st.columns(2)
 
-    if plantilla.exists():
-        with open(plantilla, "rb") as f:
-            st.download_button(
-                "⬇️ Descargar plantilla Excel",
-                data=f,
-                file_name="clientes.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+    with col1:
+        plantilla = Path("templates/clientes.xlsx")
+        if plantilla.exists():
+            with open(plantilla, "rb") as f:
+                st.download_button(
+                    "⬇️ Descargar plantilla base",
+                    data=f,
+                    file_name="clientes.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
 
-    archivo = st.file_uploader("Subí el Excel completo", type=["xlsx"])
+    with col2:
+        ejemplo = Path("templates/ejemplo_completo.xlsx")
+        if ejemplo.exists():
+            with open(ejemplo, "rb") as f:
+                st.download_button(
+                    "📄 Descargar ejemplo completo",
+                    data=f,
+                    file_name="ejemplo_emitidos_recibidos.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+
+    st.markdown("---")
+
+    # --------------------------------------------------
+    # CORREO DESTINO
+    # --------------------------------------------------
+    email_destino = st.text_input(
+        "📧 Correo para enviar los resultados",
+        placeholder="ejemplo@empresa.com.ar"
+    )
+
+    if email_destino and "@" not in email_destino:
+        st.warning("⚠️ Ingresá un correo válido.")
+
+    # --------------------------------------------------
+    # SUBIDA DE EXCEL
+    # --------------------------------------------------
+    archivo = st.file_uploader(
+        "📤 Subí el Excel completo",
+        type=["xlsx"]
+    )
 
     if archivo:
-        # 1️⃣ Vista previa
         try:
             df_preview = pd.read_excel(archivo, dtype=str)
+            st.markdown("### 👁️ Vista previa")
             st.dataframe(df_preview.head(50), use_container_width=True)
         except Exception as e:
             st.error(f"❌ Error leyendo el Excel: {e}")
             st.stop()
 
-        # 2️⃣ Envío
+        # --------------------------------------------------
+        # ENVÍO DEL PEDIDO
+        # --------------------------------------------------
         if st.button("📨 Enviar pedido"):
+            if not email_destino or "@" not in email_destino:
+                st.error("❌ Debés indicar un correo válido para recibir los resultados.")
+                st.stop()
+
             try:
                 from core.mailer import enviar_pedido
 
-                # rebobinar archivo
                 archivo.seek(0)
-
                 mail_cfg = st.secrets["gmail"]
 
                 enviar_pedido(
                     archivo=archivo,
+                    email_resultado=email_destino,
                     smtp_user=mail_cfg["SMTP_USER"],
                     smtp_password=mail_cfg["SMTP_APP_PASSWORD"],
                     notify_to=mail_cfg["NOTIFY_TO"],
                 )
 
-                st.success("✅ Pedido registrado correctamente.")
-                st.info("⏳ Procesamiento dentro de las próximas 24 hs hábiles.")
+                st.success("✅ Pedido enviado correctamente.")
+                st.info(
+                    "⏳ El procesamiento se realizará dentro de las próximas **24 hs hábiles**.\n\n"
+                    f"📧 Los resultados se enviarán a:\n**{email_destino}**"
+                )
 
             except Exception as e:
                 st.error("❌ Error al enviar el pedido.")
