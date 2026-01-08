@@ -99,186 +99,128 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
+if seccion == "📅 Panel Fiscal":
 
-st.markdown("## 📊 Planificación fiscal por cartera")
-st.markdown(
-    "Vista ejecutiva para organizar el trabajo diario del estudio en función de la cartera y los vencimientos reales."
-)
-st.markdown("---")
-
-# ======================================================
-# MODELO EXCEL DE CARTERA
-# ======================================================
-
-def generar_modelo_cartera():
-    df = pd.DataFrame({
-        "CUIT": [],
-        "RAZON_SOCIAL": [],
-        "ARCA": [],
-        "DGR_CORRIENTES": [],
-        "ATP_CHACO": [],
-        "TASA_MUNICIPAL": []
-    })
-    return excel_bytes(df)
-
-st.download_button(
-    "⬇️ Descargar modelo de cartera (Excel)",
-    generar_modelo_cartera(),
-    file_name="modelo_cartera_fiscal.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-archivo = st.file_uploader(
-    "📤 Subí tu cartera completa",
-    type=["xlsx"]
-)
-
-if not archivo:
-    st.info("Subí el Excel para generar la planificación automática.")
-    st.stop()
-
-# ======================================================
-# CARGA DE CARTERA
-# ======================================================
-
-df_cartera = pd.read_excel(archivo)
-df_cartera.columns = df_cartera.columns.str.upper().str.strip()
-
-# Normalización SI / NO
-for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
-    if col in df_cartera.columns:
-        df_cartera[col] = (
-            df_cartera[col]
-            .astype(str)
-            .str.upper()
-            .str.strip()
-        )
-
-# ======================================================
-# CARGA DE VENCIMIENTOS BASE
-# ======================================================
-
-df_venc = cargar_vencimientos()
-
-# ======================================================
-# CONFIGURACIÓN DE ORGANISMOS Y PRIORIDADES BASE
-# ======================================================
-
-ORGANISMOS = {
-    "ARCA": {
-        "match": lambda d: d["organismo"] == "ARCA",
-        "prioridad": 1
-    },
-    "DGR_CORRIENTES": {
-        "match": lambda d: d["organismo"] == "DGR",
-        "prioridad": 2
-    },
-    "ATP_CHACO": {
-        "match": lambda d: d["organismo"].str.contains("ATP", case=False),
-        "prioridad": 2
-    },
-    "TASA_MUNICIPAL": {
-        "match": lambda d: d["impuesto"] == "TS",
-        "prioridad": 3
-    },
-}
-
-# ======================================================
-# ARMADO DEL PLAN OPERATIVO
-# ======================================================
-
-registros = []
-
-for _, row in df_cartera.iterrows():
-    cuit = row.get("CUIT")
-    razon = row.get("RAZON_SOCIAL")
-
-    for org, cfg in ORGANISMOS.items():
-        if row.get(org) != "SI":
-            continue
-
-        df_org = df_venc[cfg["match"](df_venc)]
-
-        for _, v in df_org.iterrows():
-            dias = v["dias_restantes"]
-
-            # Ajuste por urgencia
-            if dias is None:
-                ajuste = 0
-            elif dias <= 2:
-                ajuste = -2
-            elif dias <= 5:
-                ajuste = -1
-            else:
-                ajuste = 0
-
-            prioridad_final = cfg["prioridad"] + ajuste
-
-            registros.append({
-                "CUIT": cuit,
-                "RAZON_SOCIAL": razon,
-                "ORGANISMO": org,
-                "IMPUESTO": v["impuesto"],
-                "FECHA": v["fecha"],
-                "DIAS": dias,
-                "ESTADO": v["estado"],
-                "PRIORIDAD": prioridad_final
-            })
-
-df_plan = pd.DataFrame(registros)
-
-if df_plan.empty:
-    st.warning("No se generaron tareas para la cartera cargada.")
-    st.stop()
-
-# ======================================================
-# VISTA EJECUTIVA · ORDEN DE TRABAJO
-# ======================================================
-
-st.markdown("### 🔥 Orden de trabajo sugerido")
-
-df_plan = df_plan.sort_values(
-    ["PRIORIDAD", "DIAS"],
-    ascending=[True, True]
-)
-
-st.dataframe(
-    df_plan[
-        ["CUIT", "RAZON_SOCIAL", "ORGANISMO", "IMPUESTO", "FECHA", "DIAS", "PRIORIDAD"]
-    ],
-    use_container_width=True,
-    hide_index=True
-)
-
-# ======================================================
-# RESUMEN OPERATIVO
-# ======================================================
-
-st.markdown("### 📌 Resumen operativo por organismo")
-
-resumen = (
-    df_plan.groupby("ORGANISMO")
-    .agg(
-        Casos=("CUIT", "count"),
-        Urgentes=("DIAS", lambda x: (x <= 2).sum()),
-        Proximos=("DIAS", lambda x: ((x > 2) & (x <= 5)).sum())
+    st.markdown("## 📊 Planificación fiscal por cartera")
+    st.markdown(
+        "Vista ejecutiva para organizar el trabajo diario del estudio en función de la cartera y los vencimientos reales."
     )
-    .reset_index()
-)
+    st.markdown("---")
 
-st.dataframe(resumen, hide_index=True, use_container_width=True)
+    # ======================================================
+    # MODELO EXCEL DE CARTERA
+    # ======================================================
 
-# ======================================================
-# DETALLE COMPLETO (COLAPSADO)
-# ======================================================
+    def generar_modelo_cartera():
+        df = pd.DataFrame({
+            "CUIT": [],
+            "RAZON_SOCIAL": [],
+            "ARCA": [],
+            "DGR_CORRIENTES": [],
+            "ATP_CHACO": [],
+            "TASA_MUNICIPAL": []
+        })
+        return excel_bytes(df)
 
-with st.expander("📂 Ver detalle completo por CUIT"):
+    st.download_button(
+        "⬇️ Descargar modelo de cartera (Excel)",
+        generar_modelo_cartera(),
+        file_name="modelo_cartera_fiscal.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    archivo = st.file_uploader(
+        "📤 Subí tu cartera completa",
+        type=["xlsx"]
+    )
+
+    if not archivo:
+        st.info("Subí el Excel para generar la planificación automática.")
+        st.stop()
+
+    # ======================================================
+    # CARGA DE CARTERA
+    # ======================================================
+
+    df_cartera = pd.read_excel(archivo)
+    df_cartera.columns = df_cartera.columns.str.upper().str.strip()
+
+    for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+        if col in df_cartera.columns:
+            df_cartera[col] = (
+                df_cartera[col]
+                .astype(str)
+                .str.upper()
+                .str.strip()
+            )
+
+    # ======================================================
+    # CARGA DE VENCIMIENTOS BASE
+    # ======================================================
+
+    df_venc = cargar_vencimientos()
+
+    # ======================================================
+    # CONFIGURACIÓN DE ORGANISMOS
+    # ======================================================
+
+    ORGANISMOS = {
+        "ARCA": {"organismo": "ARCA", "prioridad": 1},
+        "DGR_CORRIENTES": {"organismo": "DGR", "prioridad": 2},
+        "ATP_CHACO": {"organismo": "ATP(CHACO)", "prioridad": 2},
+        "TASA_MUNICIPAL": {"impuesto": "TS", "prioridad": 3},
+    }
+
+    registros = []
+
+    for _, row in df_cartera.iterrows():
+        for org, cfg in ORGANISMOS.items():
+            if row.get(org) != "SI":
+                continue
+
+            if "organismo" in cfg:
+                df_org = df_venc[df_venc["organismo"] == cfg["organismo"]]
+            else:
+                df_org = df_venc[df_venc["impuesto"] == cfg["impuesto"]]
+
+            for _, v in df_org.iterrows():
+                dias = v["dias_restantes"]
+
+                if dias <= 2:
+                    ajuste = -2
+                elif dias <= 5:
+                    ajuste = -1
+                else:
+                    ajuste = 0
+
+                registros.append({
+                    "CUIT": row["CUIT"],
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
+                    "ORGANISMO": org,
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": dias,
+                    "PRIORIDAD": cfg["prioridad"] + ajuste
+                })
+
+    df_plan = pd.DataFrame(registros)
+
+    if df_plan.empty:
+        st.warning("No se generaron tareas para la cartera cargada.")
+        st.stop()
+
+    st.markdown("### 🔥 Orden de trabajo sugerido")
+
+    df_plan = df_plan.sort_values(["PRIORIDAD", "DIAS"])
+
     st.dataframe(
-        df_plan.sort_values(["CUIT", "PRIORIDAD"]),
+        df_plan,
         use_container_width=True,
         hide_index=True
     )
 
+    with st.expander("📂 Ver detalle completo por CUIT"):
+        st.dataframe(df_plan, use_container_width=True, hide_index=True)
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
