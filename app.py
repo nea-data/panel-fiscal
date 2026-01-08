@@ -101,10 +101,16 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 if seccion == "📅 Panel Fiscal":
 
-    st.markdown("## 📅 Vencimientos del mes")
-    st.markdown("<div class='subtitulo'>Situación fiscal actual</div>", unsafe_allow_html=True)
+    st.markdown("## 📅 Panel Fiscal · Vencimientos del mes")
+    st.markdown(
+        "<div class='subtitulo'>Situación fiscal actual · vista ejecutiva</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
 
+    # ======================================================
+    # CARGA DE DATOS
+    # ======================================================
     df_base = cargar_vencimientos()
 
     organismos_cfg = {
@@ -115,7 +121,7 @@ if seccion == "📅 Panel Fiscal":
     }
 
     seleccion = st.multiselect(
-        "Seleccioná los organismos que aplican:",
+        "🎛️ Organismos incluidos en el análisis:",
         options=list(organismos_cfg.keys()),
         default=["ARCA", "DGR Corrientes · IIBB"]
     )
@@ -124,15 +130,22 @@ if seccion == "📅 Panel Fiscal":
     for key in seleccion:
         org, imp = organismos_cfg[key]
         if imp:
-            frames.append(df_base[(df_base["organismo"] == org) & (df_base["impuesto"] == imp)])
+            frames.append(
+                df_base[
+                    (df_base["organismo"] == org) &
+                    (df_base["impuesto"] == imp)
+                ]
+            )
         else:
             frames.append(df_base[df_base["organismo"] == org])
 
     df = pd.concat(frames) if frames else df_base.iloc[0:0]
 
-    st.markdown("---")
+    # ======================================================
+    # NIVEL 1 · ALERTAS CLAVE
+    # ======================================================
+    st.markdown("## 🚨 Alertas del mes")
 
-    st.markdown("## 📊 Resumen Ejecutivo")
     col1, col2, col3, col4 = st.columns(4)
 
     def count_estado(e):
@@ -143,7 +156,11 @@ if seccion == "📅 Panel Fiscal":
     col3.metric("🟢 En regla", count_estado("🟢"))
     col4.metric("⚪ Cumplidos", count_estado("⚪"))
 
-    st.markdown("### 📌 Organismos con vencimientos")
+    # ======================================================
+    # NIVEL 2 · ORGANIZACIÓN DEL TRABAJO
+    # ======================================================
+    st.markdown("---")
+    st.markdown("## 📊 Resumen operativo")
 
     resumen_org = (
         df.groupby("organismo")["estado"]
@@ -153,11 +170,25 @@ if seccion == "📅 Panel Fiscal":
             "🟢 En regla"
         )
         .reset_index()
-        .rename(columns={"organismo": "Organismo", "estado": "Situación"})
+        .rename(columns={
+            "organismo": "Organismo",
+            "estado": "Situación"
+        })
     )
 
-    st.dataframe(resumen_org, hide_index=True, use_container_width=True)
-    st.markdown("---")
+    st.dataframe(
+        resumen_org,
+        hide_index=True,
+        use_container_width=True
+    )
+
+    st.info(
+        "🧠 **Orden de trabajo sugerido**\n\n"
+        "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n"
+        "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n"
+        "3️⃣ **Tasas municipales** — última etapa del proceso.\n\n"
+        "Este panel está diseñado para **organizar el trabajo**, no para listar normativa."
+    )
 
     # ======================================================
     # DETALLE DE VENCIMIENTOS POR ORGANISMO
