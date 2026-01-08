@@ -97,125 +97,133 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · GESTIÓN DE CARTERA FISCAL
+# SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
 
-st.markdown("## 📂 Gestión de cartera fiscal")
-st.caption("Planificación mensual · estudios contables")
+st.markdown("## 📊 Planificación fiscal por cartera")
+st.markdown("Vista ejecutiva para ordenar el trabajo diario del estudio.")
+st.markdown("---")
 
-# ------------------------------------------------------
-# MODELO EXCEL
-# ------------------------------------------------------
-st.markdown("### 📥 Modelo de cartera (Excel)")
+# ======================================================
+# MODELO EXCEL DE CARTERA
+# ======================================================
 
-modelo_df = pd.DataFrame({
-    "CUIT": ["20301234567"],
-    "RAZON_SOCIAL": ["Cliente Ejemplo SA"],
-    "ARCA": ["SI"],
-    "DGR_CORRIENTES": ["SI"],
-    "ATP_CHACO": ["NO"],
-    "TASA_MUNICIPAL": ["NO"]
-})
-
-buffer = BytesIO()
-with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-    modelo_df.to_excel(writer, index=False, sheet_name="Cartera")
-    workbook = writer.book
-    worksheet = writer.sheets["Cartera"]
-    worksheet.set_column("A:F", 22)
+def generar_modelo_cartera():
+    df = pd.DataFrame({
+        "CUIT": [],
+        "RAZON_SOCIAL": [],
+        "ARCA": [],
+        "DGR_CORRIENTES": [],
+        "ATP_CHACO": [],
+        "TASA_MUNICIPAL": []
+    })
+    return excel_bytes(df)
 
 st.download_button(
-    label="⬇️ Descargar modelo de cartera",
-    data=buffer.getvalue(),
+    "⬇️ Descargar modelo de cartera (Excel)",
+    generar_modelo_cartera(),
     file_name="modelo_cartera_fiscal.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# ------------------------------------------------------
-# CARGA DE CARTERA
-# ------------------------------------------------------
-st.markdown("### 📤 Subir cartera del estudio")
-
 archivo = st.file_uploader(
-    "Subí el Excel completo con tu cartera",
+    "📤 Subí tu cartera completa",
     type=["xlsx"]
 )
 
-if archivo is not None:
-    cartera = pd.read_excel(archivo)
+if not archivo:
+    st.info("Subí el Excel para generar la planificación automática.")
+    st.stop()
 
-    columnas_requeridas = {
-        "CUIT", "ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"
-    }
+# ======================================================
+# CARGA DE CARTERA
+# ======================================================
 
-    if not columnas_requeridas.issubset(set(cartera.columns)):
-        st.error("❌ El archivo no tiene el formato esperado.")
-        st.stop()
+df_cartera = pd.read_excel(archivo)
+df_cartera.columns = [c.strip().upper() for c in df_cartera.columns]
 
-    st.success(f"✅ Cartera cargada: {len(cartera)} CUITs")
+# ======================================================
+# TABLA DE VENCIMIENTOS BASE
+# ======================================================
 
-    # --------------------------------------------------
-    # NORMALIZACIÓN
-    # --------------------------------------------------
-    registros = []
+df_venc = cargar_vencimientos()
 
-    prioridades = {
-        "ARCA": 1,
-        "DGR_CORRIENTES": 2,
-        "ATP_CHACO": 3,
-        "TASA_MUNICIPAL": 4
-    }
+# ======================================================
+# ARMADO OPERATIVO POR CUIT
+# ======================================================
 
-    for _, row in cartera.iterrows():
-        for org, prioridad in prioridades.items():
-            if str(row[org]).strip().upper() == "SI":
+ORGANISMOS = {
+    "ARCA": 1,
+    "DGR_CORRIENTES": 2,
+    "ATP_CHACO": 2,
+    "TASA_MUNICIPAL": 3
+}
+
+registros = []
+
+for _, row in df_cartera.iterrows():
+    for org, prioridad_base in ORGANISMOS.items():
+        if row.get(org) == "SI":
+            df_org = df_venc[df_venc["organismo"].str.contains(org.split("_")[0], case=False)]
+            for _, v in df_org.iterrows():
+                ajuste = -2 if v["dias_restantes"] <= 2 else -1 if v["dias_restantes"] <= 5 else 0
+                prioridad_final = prioridad_base + ajuste
+
                 registros.append({
                     "CUIT": row["CUIT"],
-                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL", ""),
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
                     "ORGANISMO": org,
-                    "PRIORIDAD": prioridad
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "ESTADO": v["estado"],
+                    "PRIORIDAD": prioridad_final
                 })
 
-    planificacion = pd.DataFrame(registros)
+df_plan = pd.DataFrame(registros)
 
-    # --------------------------------------------------
-    # TABLERO DE PLANIFICACIÓN
-    # --------------------------------------------------
-    st.markdown("### 🧠 Planificación sugerida del mes")
+# ======================================================
+# VISTA EJECUTIVA (LA CLAVE)
+# ======================================================
 
-    resumen = (
-        planificacion
-        .groupby(["PRIORIDAD", "ORGANISMO"])
-        .agg(
-            CUITS=("CUIT", "nunique")
-        )
-        .reset_index()
-        .sort_values("PRIORIDAD")
+st.markdown("### 🔥 Orden de trabajo sugerido (prioridad real)")
+
+df_plan = df_plan.sort_values(
+    ["PRIORIDAD", "DIAS"],
+    ascending=[True, True]
+)
+
+st.dataframe(
+    df_plan[
+        ["CUIT", "RAZON_SOCIAL", "ORGANISMO", "IMPUESTO", "FECHA", "DIAS", "PRIORIDAD"]
+    ],
+    use_container_width=True,
+    hide_index=True
+)
+
+# ======================================================
+# RESUMEN EJECUTIVO
+# ======================================================
+
+st.markdown("### 📌 Resumen operativo")
+
+resumen = (
+    df_plan.groupby("ORGANISMO")
+    .agg(
+        Casos=("CUIT", "count"),
+        Urgentes=("DIAS", lambda x: (x <= 2).sum())
     )
+    .reset_index()
+)
 
-    col1, col2, col3 = st.columns(3)
+st.dataframe(resumen, hide_index=True, use_container_width=True)
 
-    col1.metric("Total CUITs", planificacion["CUIT"].nunique())
-    col2.metric("Obligaciones", len(planificacion))
-    col3.metric("Organismos", planificacion["ORGANISMO"].nunique())
+# ======================================================
+# DETALLE COLAPSADO (OPCIONAL)
+# ======================================================
 
-    st.markdown("#### 🔢 Orden de trabajo recomendado")
-
-    st.dataframe(
-        resumen,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # --------------------------------------------------
-    # DETALLE OPERATIVO (OPCIONAL)
-    # --------------------------------------------------
-    with st.expander("📋 Ver detalle operativo por CUIT"):
-        st.dataframe(
-            planificacion.sort_values(["PRIORIDAD", "CUIT"]),
-            use_container_width=True,
-            hide_index=True
-        )
+with st.expander("📂 Ver detalle completo por CUIT"):
+    st.dataframe(df_plan, use_container_width=True, hide_index=True)
 
 
 # ======================================================
