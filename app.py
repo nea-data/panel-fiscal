@@ -341,15 +341,20 @@ elif seccion == "📤 Emitidos / Recibidos":
     archivo = st.file_uploader("Subí el Excel completo", type=["xlsx"])
 
     if archivo:
+        # ✅ 1) LECTURA DEL EXCEL (SOLO ESTO)
         try:
-            # 🔍 Vista previa (esto consume el archivo)
             df_preview = pd.read_excel(archivo, dtype=str)
             st.dataframe(df_preview.head(50), use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ Error leyendo el Excel: {e}")
+            st.stop()
 
-            if st.button("📨 Enviar pedido"):
+        # ✅ 2) ENVÍO DEL PEDIDO
+        if st.button("📨 Enviar pedido"):
+            try:
                 from core.mailer import enviar_pedido
 
-                # 🔑 CLAVE: rebobinar el archivo antes de enviarlo
+                # 🔑 rebobinar archivo
                 archivo.seek(0)
 
                 smtp_user = st.secrets["SMTP_USER"]
@@ -366,8 +371,10 @@ elif seccion == "📤 Emitidos / Recibidos":
                 st.success("✅ Pedido registrado correctamente.")
                 st.info("⏳ Procesamiento dentro de las próximas 24 hs hábiles.")
 
-        except Exception:
-            st.error("❌ No se pudo leer el archivo. Verificá el formato.")
+            except Exception as e:
+                st.error("❌ Error al enviar el pedido.")
+                st.exception(e)
+
 
 
 # ======================================================
