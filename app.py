@@ -364,9 +364,9 @@ elif seccion == "📤 Emitidos / Recibidos":
 
                 enviar_pedido(
                     archivo=archivo,
-                    smtp_user=mail_cfg["gmail"]["SMTP_USER"],
-                    smtp_password=mail_cfg["gmail"]["SMTP_APP_PASSWORD"],
-                    notify_to=mail_cfg["gmail"]["NOTIFY_TO"],
+                    smtp_user=mail_cfg["SMTP_USER"],
+                    smtp_password=mail_cfg["SMTP_APP_PASSWORD"],
+                    notify_to=mail_cfg["NOTIFY_TO"],
                 )
 
                 st.success("✅ Pedido registrado correctamente.")
