@@ -97,163 +97,325 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · PANEL FISCAL (VISTA EJECUTIVA + CARTERA)
+# SECCIÓN 1 · PANEL FISCAL (con Cartera)
 # ======================================================
 if seccion == "📅 Panel Fiscal":
 
-    st.markdown("## 📅 Panel Fiscal · Vencimientos del mes")
-    st.markdown(
-        "<div class='subtitulo'>Situación fiscal actual · vista ejecutiva</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("## 📅 Panel Fiscal")
+    st.markdown("<div class='subtitulo'>Gestión por cartera · estudios contables</div>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # ==================================================
-    # ORGANISMOS INCLUIDOS
-    # ==================================================
-    st.markdown("### 🏛️ Organismos incluidos en el análisis")
+    # ======================================================
+    # CARGA BASE VENCIMIENTOS DEL MES (EXCEL)
+    # ======================================================
+    df_base = cargar_vencimientos()
 
-    organismos_disponibles = [
-        "ARCA",
-        "DGR Corrientes · IIBB",
-        "ATP Chaco · IIBB",
-        "Tasa Municipal"
+    # ======================================================
+    # PASO 0 · CARTERA (MODELO + CARGA)
+    # ======================================================
+    st.markdown("### 📥 Paso 0 · Cartera de clientes (Excel)")
+    st.caption(
+        "Descargá el modelo, completalo con tus CUITs y marcá qué obligaciones aplica para cada cliente. "
+        "Luego subilo para generar el resumen del mes."
+    )
+
+    # Modelo de cartera (descarga)
+    df_modelo_cartera = pd.DataFrame({
+        "CUIT": ["20301234567", "27223334445"],
+        "RAZON_SOCIAL (opcional)": ["Cliente Ejemplo SA", "Juan Pérez"],
+        "ARCA": ["SI", "SI"],           # IVA / Libros / DDJJ ARCA
+        "DGR_IIBB": ["SI", "NO"],       # DGR Corrientes IIBB
+        "ATP_IIBB": ["NO", "SI"],       # ATP Chaco IIBB
+        "TS_MUN": ["NO", "NO"],         # Tasa Municipal
+        "OBSERVACIONES": ["Responsable Inscripto", "Monotributo"]
+    })
+
+    st.download_button(
+        "⬇️ Descargar modelo de cartera (Excel)",
+        data=excel_bytes(df_modelo_cartera),
+        file_name="modelo_cartera_clientes.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    cartera_file = st.file_uploader(
+        "📤 Subí tu cartera (Excel)",
+        type=["xlsx"],
+        help="Debe incluir una columna CUIT y columnas de obligaciones (ARCA, DGR_IIBB, ATP_IIBB, TS_MUN)."
+    )
+
+    st.markdown("---")
+
+    # ======================================================
+    # TEXTOS + ADVERTENCIAS (más formal)
+    # ======================================================
+    st.info(
+        "🔒 **Confidencialidad y uso de credenciales**\n\n"
+        "- Las credenciales y/o claves que puedas utilizar en procesos externos **son responsabilidad del usuario**.\n"
+        "- NEA DATA **no almacena** claves ni credenciales de clientes.\n"
+        "- Los datos cargados se utilizan **únicamente para el procesamiento solicitado** y para generar el resumen."
+    )
+
+    # ======================================================
+    # SI NO HAY CARTERA, MOSTRAR VISTA GENERAL (TODOS LOS ORGANISMOS)
+    # ======================================================
+    if not cartera_file:
+        st.markdown("### 👀 Vista general del mes (sin cartera)")
+        st.caption("Esta vista muestra vencimientos generales del mes. Para un resumen por clientes, cargá la cartera.")
+
+        # Resumen ejecutivo general
+        st.markdown("#### 📊 Resumen Ejecutivo (General)")
+        col1, col2, col3, col4 = st.columns(4)
+
+        def _count_estado(df_, e):
+            if df_.empty:
+                return 0
+            return int((df_["estado"] == e).sum())
+
+        col1.metric("🔴 Vence hoy / mañana", _count_estado(df_base, "🔴"))
+        col2.metric("🟡 Próximos días", _count_estado(df_base, "🟡"))
+        col3.metric("🟢 En regla", _count_estado(df_base, "🟢"))
+        col4.metric("⚪ Cumplidos", _count_estado(df_base, "⚪"))
+
+        st.markdown("---")
+
+        # Desplegables por organismo
+        st.markdown("#### 📌 Vencimientos por organismo (desplegable)")
+
+        def _tabla_detalle(df_filtro: pd.DataFrame):
+            if df_filtro.empty:
+                st.info("Sin vencimientos este mes.")
+                return
+            st.dataframe(
+                df_filtro[["terminacion", "vencimiento"]].rename(columns={
+                    "terminacion": "Terminación CUIT",
+                    "vencimiento": "Vencimiento"
+                }),
+                hide_index=True,
+                use_container_width=True
+            )
+
+        with st.expander("🔵 ARCA", expanded=False):
+            _tabla_detalle(df_base[df_base["organismo"] == "ARCA"])
+
+        with st.expander("🟢 DGR Corrientes · IIBB", expanded=False):
+            _tabla_detalle(df_base[(df_base["organismo"] == "DGR") & (df_base["impuesto"] == "IIBB")])
+
+        with st.expander("🟠 ATP Chaco · IIBB", expanded=False):
+            _tabla_detalle(df_base[(df_base["organismo"] == "ATP(CHACO)") & (df_base["impuesto"] == "IIBB")])
+
+        with st.expander("🟣 Tasa Municipal · Corrientes", expanded=False):
+            _tabla_detalle(df_base[(df_base["organismo"] == "ACOR") & (df_base["impuesto"] == "TS")])
+
+        st.markdown("---")
+        st.markdown("""
+        ⚪ **Cumplido** &nbsp;&nbsp; 🔴 **Vence hoy / mañana** &nbsp;&nbsp; 🟡 **Próximos días** &nbsp;&nbsp; 🟢 **En regla**
+        """)
+        # Cortamos acá si no hay cartera
+        st.stop()
+
+    # ======================================================
+    # SI HAY CARTERA: PROCESAR (PASO 1+)
+    # ======================================================
+    try:
+        df_cartera = pd.read_excel(cartera_file, dtype=str).fillna("")
+    except Exception as e:
+        st.error(f"❌ No pude leer la cartera: {e}")
+        st.stop()
+
+    # Normalizar columnas
+    df_cartera.columns = [normalizar_col(c) for c in df_cartera.columns]
+
+    # Validaciones mínimas
+    if "CUIT" not in df_cartera.columns:
+        st.error("❌ La cartera debe tener la columna **CUIT**.")
+        st.stop()
+
+    # Helpers de flags
+    def _norm_flag(x: str) -> bool:
+        x = str(x).strip().upper()
+        return x in ("SI", "S", "TRUE", "1", "X", "OK")
+
+    # Columnas esperadas (si no están, las creamos en blanco)
+    for col in ("ARCA", "DGR_IIBB", "ATP_IIBB", "TS_MUN"):
+        if col not in df_cartera.columns:
+            df_cartera[col] = ""
+
+    # Normalizar CUIT y marcar flags
+    df_cartera["CUIT"] = df_cartera["CUIT"].astype(str).str.replace(r"\D", "", regex=True)
+    df_cartera["ARCA_FLAG"] = df_cartera["ARCA"].apply(_norm_flag)
+    df_cartera["DGR_FLAG"] = df_cartera["DGR_IIBB"].apply(_norm_flag)
+    df_cartera["ATP_FLAG"] = df_cartera["ATP_IIBB"].apply(_norm_flag)
+    df_cartera["TS_FLAG"] = df_cartera["TS_MUN"].apply(_norm_flag)
+
+    # Filtrar CUITs válidos
+    df_cartera["CUIT_VALIDO"] = df_cartera["CUIT"].apply(lambda x: x.isdigit() and len(x) == 11)
+    invalidos = df_cartera[~df_cartera["CUIT_VALIDO"]].copy()
+
+    if not invalidos.empty:
+        st.warning("⚠️ Se detectaron CUITs inválidos en la cartera (no se incluirán en el resumen).")
+        st.dataframe(invalidos[["CUIT"]].head(50), use_container_width=True)
+
+    df_cartera = df_cartera[df_cartera["CUIT_VALIDO"]].copy()
+
+    if df_cartera.empty:
+        st.error("❌ No quedaron CUITs válidos para procesar.")
+        st.stop()
+
+    st.markdown("### ✅ Cartera cargada")
+    st.caption("Vista previa (primeras filas)")
+    st.dataframe(df_cartera.head(50), use_container_width=True)
+    st.markdown("---")
+
+    # ======================================================
+    # PASO 1 · RESUMEN EJECUTIVO POR CARTERA
+    # ======================================================
+    st.markdown("### 📊 Paso 1 · Resumen ejecutivo (por cartera)")
+
+    total_cuits = df_cartera["CUIT"].nunique()
+    cuits_arca = int(df_cartera["ARCA_FLAG"].sum())
+    cuits_dgr = int(df_cartera["DGR_FLAG"].sum())
+    cuits_atp = int(df_cartera["ATP_FLAG"].sum())
+    cuits_ts = int(df_cartera["TS_FLAG"].sum())
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("👥 CUITs en cartera", total_cuits)
+    c2.metric("🔵 ARCA", cuits_arca)
+    c3.metric("🟢 DGR IIBB", cuits_dgr)
+    c4.metric("🟠 ATP IIBB", cuits_atp)
+    c5.metric("🟣 TS Mun", cuits_ts)
+
+    st.markdown("---")
+
+    # ======================================================
+    # PASO 2 · ORDEN DE TRABAJO (prioridad)
+    # ======================================================
+    st.markdown("### 🧠 Paso 2 · Orden de trabajo sugerido")
+    st.caption("Regla general: se prioriza ARCA porque desde Libros IVA se devengan IIBB / tasas.")
+    st.markdown(
+        "- **1) ARCA** → Libros IVA / IVA / base de devengamiento\n"
+        "- **2) IIBB** → DGR / ATP según corresponda\n"
+        "- **3) Tasas municipales** → TS / otras"
+    )
+
+    st.markdown("---")
+
+    # ======================================================
+    # PASO 3 · GENERAR VENCIMIENTOS APLICABLES POR CARTERA
+    # ======================================================
+    # Tomamos terminación de CUIT (último dígito)
+    df_cartera["TERMINACION"] = df_cartera["CUIT"].str[-1]
+
+    # Base por organismo
+    v_arca = df_base[df_base["organismo"] == "ARCA"].copy()
+    v_dgr  = df_base[(df_base["organismo"] == "DGR") & (df_base["impuesto"] == "IIBB")].copy()
+    v_atp  = df_base[(df_base["organismo"] == "ATP(CHACO)") & (df_base["impuesto"] == "IIBB")].copy()
+    v_ts   = df_base[(df_base["organismo"] == "ACOR") & (df_base["impuesto"] == "TS")].copy()
+
+    # Función: merge por terminación para construir tabla de vencimientos por cliente+organismo
+    def _venc_por_flag(df_cli: pd.DataFrame, flag_col: str, df_venc: pd.DataFrame, label_org: str) -> pd.DataFrame:
+        base_cli = df_cli[df_cli[flag_col]].copy()
+        if base_cli.empty or df_venc.empty:
+            return pd.DataFrame()
+        out = base_cli.merge(
+            df_venc,
+            left_on="TERMINACION",
+            right_on="terminacion",
+            how="left"
+        )
+        out["ORGANISMO_LABEL"] = label_org
+        return out
+
+    df_arca_cli = _venc_por_flag(df_cartera, "ARCA_FLAG", v_arca, "ARCA")
+    df_dgr_cli  = _venc_por_flag(df_cartera, "DGR_FLAG",  v_dgr,  "DGR IIBB")
+    df_atp_cli  = _venc_por_flag(df_cartera, "ATP_FLAG",  v_atp,  "ATP IIBB")
+    df_ts_cli   = _venc_por_flag(df_cartera, "TS_FLAG",   v_ts,   "TS Mun")
+
+    df_cartera_venc = pd.concat([df_arca_cli, df_dgr_cli, df_atp_cli, df_ts_cli], ignore_index=True)
+    if df_cartera_venc.empty:
+        st.warning("⚠️ No se generaron vencimientos: revisá flags de la cartera o el Excel de vencimientos.")
+        st.stop()
+
+    # Limpieza de columnas útiles
+    # (si existe RAZON_SOCIAL opcional, mostrar)
+    col_rs = "RAZON_SOCIAL (OPCIONAL)" if "RAZON_SOCIAL (OPCIONAL)" in df_cartera_venc.columns else None
+    cols_show = ["CUIT"]
+    if col_rs:
+        cols_show.append(col_rs)
+
+    cols_show += [
+        "ORGANISMO_LABEL",
+        "impuesto",
+        "fecha",
+        "dias_restantes",
+        "estado",
+        "vencimiento",
+        "terminacion"
     ]
 
-    seleccion = st.multiselect(
-        "Seleccioná los organismos relevantes:",
-        options=organismos_disponibles,
-        default=["ARCA", "DGR Corrientes · IIBB"]
-    )
+    # ======================================================
+    # PASO 4 · RESUMEN POR PRIORIDAD + DESPLEGABLES POR ORGANISMO
+    # ======================================================
+    st.markdown("### 📌 Paso 3 · Estado por cartera (organismos)")
+
+    # Conteo estados sobre la cartera (no base completa)
+    def _count_estado(df_, e):
+        if df_.empty:
+            return 0
+        return int((df_["estado"] == e).sum())
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("🔴 Vence hoy / mañana", _count_estado(df_cartera_venc, "🔴"))
+    r2.metric("🟡 Próximos días", _count_estado(df_cartera_venc, "🟡"))
+    r3.metric("🟢 En regla", _count_estado(df_cartera_venc, "🟢"))
+    r4.metric("⚪ Cumplidos", _count_estado(df_cartera_venc, "⚪"))
 
     st.markdown("---")
 
-    # ==================================================
-    # ALERTAS (placeholder lógico, sin vencimientos aún)
-    # ==================================================
-    st.markdown("## 🚨 Alertas del mes")
+    # Función de tabla compacta
+    def _tabla_org(df_org: pd.DataFrame):
+        if df_org.empty:
+            st.info("Sin vencimientos para este organismo en la cartera.")
+            return
+        view = df_org[cols_show].copy()
 
-    col1, col2, col3, col4 = st.columns(4)
+        # Orden sugerido: primero urgentes, luego por fecha
+        order_map = {"🔴": 0, "🟡": 1, "🟢": 2, "⚪": 3}
+        view["_ord"] = view["estado"].map(order_map).fillna(9)
+        view = view.sort_values(by=["_ord", "fecha", "CUIT"]).drop(columns=["_ord"])
 
-    col1.metric("🔴 Vence hoy / mañana", 0)
-    col2.metric("🟡 Próximos días", 0)
-    col3.metric("🟢 En regla", 8)
-    col4.metric("⚪ Cumplidos", 0)
+        st.dataframe(
+            view.rename(columns={
+                "impuesto": "Impuesto",
+                "fecha": "Fecha",
+                "dias_restantes": "Días",
+                "estado": "Estado",
+                "vencimiento": "Vencimiento",
+                "terminacion": "Term.",
+                "ORGANISMO_LABEL": "Organismo"
+            }),
+            hide_index=True,
+            use_container_width=True
+        )
 
-    st.markdown("---")
+    # Desplegables (no cargan la vista)
+    # ✅ Prioridad: ARCA primero
+    with st.expander("🔵 ARCA (prioridad 1)", expanded=True):
+        _tabla_org(df_cartera_venc[df_cartera_venc["ORGANISMO_LABEL"] == "ARCA"])
 
-    # ==================================================
-    # ORDEN DE TRABAJO
-    # ==================================================
-    st.markdown("## 🧠 Orden de trabajo sugerido")
+    with st.expander("🟢 DGR Corrientes · IIBB (prioridad 2)", expanded=False):
+        _tabla_org(df_cartera_venc[df_cartera_venc["ORGANISMO_LABEL"] == "DGR IIBB"])
 
-    st.info(
-        "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n\n"
-        "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n\n"
-        "3️⃣ **Tasas municipales** — última etapa del proceso.\n\n"
-        "_Este panel está diseñado para organizar el trabajo diario del estudio._"
-    )
+    with st.expander("🟠 ATP Chaco · IIBB (prioridad 2)", expanded=False):
+        _tabla_org(df_cartera_venc[df_cartera_venc["ORGANISMO_LABEL"] == "ATP IIBB"])
 
-    st.markdown("---")
-
-    # ==================================================
-    # ESTADO GENERAL POR ORGANISMO
-    # ==================================================
-    st.markdown("## 📌 Estado general por organismo")
-
-    df_estado = pd.DataFrame({
-        "Organismo": ["ARCA", "DGR"],
-        "Situación": ["🟢 En regla", "🟢 En regla"]
-    })
-
-    st.dataframe(df_estado, hide_index=True, use_container_width=True)
-
-    st.markdown("---")
-
-    # ==================================================
-    # CONFIDENCIALIDAD
-    # ==================================================
-    st.markdown("## 🔐 Confidencialidad de la información")
-
-    st.warning(
-        "Las claves fiscales y datos sensibles se utilizan **exclusivamente** "
-        "para el procesamiento solicitado.\n\n"
-        "**NEA DATA no almacena credenciales ni información fiscal de los clientes.**"
-    )
+    with st.expander("🟣 Tasa Municipal (prioridad 3)", expanded=False):
+        _tabla_org(df_cartera_venc[df_cartera_venc["ORGANISMO_LABEL"] == "TS Mun"])
 
     st.markdown("---")
+    st.markdown("""
+    ⚪ **Cumplido** &nbsp;&nbsp; 🔴 **Vence hoy / mañana** &nbsp;&nbsp; 🟡 **Próximos días** &nbsp;&nbsp; 🟢 **En regla**
+    """)
 
-    # ==================================================
-    # EJEMPLO VISUAL DE CARTERA (NO DESCARGABLE)
-    # ==================================================
-    st.markdown("## 📄 Ejemplo de estructura de cartera")
-
-    df_ejemplo = pd.DataFrame({
-        "CUIT": ["30-70888534-9", "27-12345678-6"],
-        "RAZON_SOCIAL": ["Empresa Ejemplo SA", "Cliente Prueba"],
-        "ARCA": ["SI", "SI"],
-        "DGR_CORRIENTES": ["SI", "NO"],
-        "ATP_CHACO": ["NO", "NO"],
-        "TASA_MUNICIPAL": ["SI", "NO"],
-    })
-
-    st.caption("Ejemplo ilustrativo. La estructura debe respetarse para el análisis.")
-    st.dataframe(df_ejemplo, hide_index=True, use_container_width=True)
-
-    st.markdown("---")
-
-    # ==================================================
-    # CARGA DE CARTERA REAL
-    # ==================================================
-    st.markdown("## 📤 Cargar cartera de clientes")
-
-    archivo_cartera = st.file_uploader(
-        "Subí el Excel con tu cartera de clientes",
-        type=["xlsx"]
-    )
-
-    if archivo_cartera:
-        try:
-            df_cartera = pd.read_excel(archivo_cartera, dtype=str)
-            df_cartera.columns = [c.strip().upper() for c in df_cartera.columns]
-
-            st.success("✅ Cartera cargada correctamente")
-            st.dataframe(df_cartera.head(20), use_container_width=True)
-
-            # Normalizar SI / NO
-            for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
-                if col in df_cartera.columns:
-                    df_cartera[col] = (
-                        df_cartera[col]
-                        .fillna("NO")
-                        .str.upper()
-                        .str.strip()
-                    )
-
-            st.markdown("### 📊 Resumen automático por organismo")
-
-            resumen = {
-                "ARCA": int((df_cartera.get("ARCA") == "SI").sum()),
-                "DGR Corrientes": int((df_cartera.get("DGR_CORRIENTES") == "SI").sum()),
-                "ATP Chaco": int((df_cartera.get("ATP_CHACO") == "SI").sum()),
-                "Tasa Municipal": int((df_cartera.get("TASA_MUNICIPAL") == "SI").sum()),
-            }
-
-            df_resumen = pd.DataFrame(
-                resumen.items(),
-                columns=["Organismo", "CUITs involucrados"]
-            )
-
-            st.dataframe(df_resumen, hide_index=True, use_container_width=True)
-
-            st.info(
-                "Este resumen permite **priorizar tareas** y organizar el trabajo "
-                "por organismo, incluso sin sistema de login."
-            )
-
-        except Exception as e:
-            st.error("❌ Error procesando el archivo de cartera")
-            st.exception(e)
 
 
 
