@@ -222,6 +222,7 @@ if seccion == "📅 Panel Fiscal":
     with st.expander("📂 Ver detalle completo por CUIT"):
         st.dataframe(df_plan, use_container_width=True, hide_index=True)
 
+
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
 # ======================================================
