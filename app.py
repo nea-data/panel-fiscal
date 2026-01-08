@@ -101,7 +101,9 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 
 st.markdown("## 📊 Planificación fiscal por cartera")
-st.markdown("Vista ejecutiva para ordenar el trabajo diario del estudio.")
+st.markdown(
+    "Vista ejecutiva para organizar el trabajo diario del estudio en función de la cartera y los vencimientos reales."
+)
 st.markdown("---")
 
 # ======================================================
@@ -140,53 +142,100 @@ if not archivo:
 # ======================================================
 
 df_cartera = pd.read_excel(archivo)
-df_cartera.columns = [c.strip().upper() for c in df_cartera.columns]
+df_cartera.columns = df_cartera.columns.str.upper().str.strip()
+
+# Normalización SI / NO
+for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+    if col in df_cartera.columns:
+        df_cartera[col] = (
+            df_cartera[col]
+            .astype(str)
+            .str.upper()
+            .str.strip()
+        )
 
 # ======================================================
-# TABLA DE VENCIMIENTOS BASE
+# CARGA DE VENCIMIENTOS BASE
 # ======================================================
 
 df_venc = cargar_vencimientos()
 
 # ======================================================
-# ARMADO OPERATIVO POR CUIT
+# CONFIGURACIÓN DE ORGANISMOS Y PRIORIDADES BASE
 # ======================================================
 
 ORGANISMOS = {
-    "ARCA": 1,
-    "DGR_CORRIENTES": 2,
-    "ATP_CHACO": 2,
-    "TASA_MUNICIPAL": 3
+    "ARCA": {
+        "match": lambda d: d["organismo"] == "ARCA",
+        "prioridad": 1
+    },
+    "DGR_CORRIENTES": {
+        "match": lambda d: d["organismo"] == "DGR",
+        "prioridad": 2
+    },
+    "ATP_CHACO": {
+        "match": lambda d: d["organismo"].str.contains("ATP", case=False),
+        "prioridad": 2
+    },
+    "TASA_MUNICIPAL": {
+        "match": lambda d: d["impuesto"] == "TS",
+        "prioridad": 3
+    },
 }
+
+# ======================================================
+# ARMADO DEL PLAN OPERATIVO
+# ======================================================
 
 registros = []
 
 for _, row in df_cartera.iterrows():
-    for org, prioridad_base in ORGANISMOS.items():
-        if row.get(org) == "SI":
-            df_org = df_venc[df_venc["organismo"].str.contains(org.split("_")[0], case=False)]
-            for _, v in df_org.iterrows():
-                ajuste = -2 if v["dias_restantes"] <= 2 else -1 if v["dias_restantes"] <= 5 else 0
-                prioridad_final = prioridad_base + ajuste
+    cuit = row.get("CUIT")
+    razon = row.get("RAZON_SOCIAL")
 
-                registros.append({
-                    "CUIT": row["CUIT"],
-                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                    "ORGANISMO": org,
-                    "IMPUESTO": v["impuesto"],
-                    "FECHA": v["fecha"],
-                    "DIAS": v["dias_restantes"],
-                    "ESTADO": v["estado"],
-                    "PRIORIDAD": prioridad_final
-                })
+    for org, cfg in ORGANISMOS.items():
+        if row.get(org) != "SI":
+            continue
+
+        df_org = df_venc[cfg["match"](df_venc)]
+
+        for _, v in df_org.iterrows():
+            dias = v["dias_restantes"]
+
+            # Ajuste por urgencia
+            if dias is None:
+                ajuste = 0
+            elif dias <= 2:
+                ajuste = -2
+            elif dias <= 5:
+                ajuste = -1
+            else:
+                ajuste = 0
+
+            prioridad_final = cfg["prioridad"] + ajuste
+
+            registros.append({
+                "CUIT": cuit,
+                "RAZON_SOCIAL": razon,
+                "ORGANISMO": org,
+                "IMPUESTO": v["impuesto"],
+                "FECHA": v["fecha"],
+                "DIAS": dias,
+                "ESTADO": v["estado"],
+                "PRIORIDAD": prioridad_final
+            })
 
 df_plan = pd.DataFrame(registros)
 
+if df_plan.empty:
+    st.warning("No se generaron tareas para la cartera cargada.")
+    st.stop()
+
 # ======================================================
-# VISTA EJECUTIVA (LA CLAVE)
+# VISTA EJECUTIVA · ORDEN DE TRABAJO
 # ======================================================
 
-st.markdown("### 🔥 Orden de trabajo sugerido (prioridad real)")
+st.markdown("### 🔥 Orden de trabajo sugerido")
 
 df_plan = df_plan.sort_values(
     ["PRIORIDAD", "DIAS"],
@@ -202,16 +251,17 @@ st.dataframe(
 )
 
 # ======================================================
-# RESUMEN EJECUTIVO
+# RESUMEN OPERATIVO
 # ======================================================
 
-st.markdown("### 📌 Resumen operativo")
+st.markdown("### 📌 Resumen operativo por organismo")
 
 resumen = (
     df_plan.groupby("ORGANISMO")
     .agg(
         Casos=("CUIT", "count"),
-        Urgentes=("DIAS", lambda x: (x <= 2).sum())
+        Urgentes=("DIAS", lambda x: (x <= 2).sum()),
+        Proximos=("DIAS", lambda x: ((x > 2) & (x <= 5)).sum())
     )
     .reset_index()
 )
@@ -219,11 +269,15 @@ resumen = (
 st.dataframe(resumen, hide_index=True, use_container_width=True)
 
 # ======================================================
-# DETALLE COLAPSADO (OPCIONAL)
+# DETALLE COMPLETO (COLAPSADO)
 # ======================================================
 
 with st.expander("📂 Ver detalle completo por CUIT"):
-    st.dataframe(df_plan, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df_plan.sort_values(["CUIT", "PRIORIDAD"]),
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ======================================================
