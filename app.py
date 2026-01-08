@@ -157,7 +157,7 @@ if seccion == "📅 Panel Fiscal":
     # SI NO HAY CARTERA, MOSTRAR VISTA GENERAL (TODOS LOS ORGANISMOS)
     # ======================================================
     if not cartera_file:
-        st.markdown("### 👀 Vista general del mes (sin cartera)")
+        st.markdown("### Vista general del mes (sin cartera)")
         st.caption("Esta vista muestra vencimientos generales del mes. Para un resumen por clientes, cargá la cartera.")
 
         # Resumen ejecutivo general
