@@ -97,13 +97,13 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · PANEL FISCAL (Vista Ejecutiva)
+# SECCIÓN 1 · PANEL FISCAL
 # ======================================================
 if seccion == "📅 Panel Fiscal":
 
-    # =========================
-    # ENCABEZADO
-    # =========================
+    # --------------------------------------------------
+    # TÍTULO
+    # --------------------------------------------------
     st.markdown("## 📅 Panel Fiscal · Vencimientos del mes")
     st.markdown(
         "<div class='subtitulo'>Situación fiscal actual · vista ejecutiva</div>",
@@ -111,9 +111,9 @@ if seccion == "📅 Panel Fiscal":
     )
     st.markdown("---")
 
-    # =========================
-    # CARGA BASE
-    # =========================
+    # --------------------------------------------------
+    # CARGA BASE DE VENCIMIENTOS
+    # --------------------------------------------------
     df_base = cargar_vencimientos()
 
     organismos_cfg = {
@@ -134,19 +134,17 @@ if seccion == "📅 Panel Fiscal":
         org, imp = organismos_cfg[key]
         if imp:
             frames.append(
-                df_base[
-                    (df_base["organismo"] == org) &
-                    (df_base["impuesto"] == imp)
-                ]
+                df_base[(df_base["organismo"] == org) & (df_base["impuesto"] == imp)]
             )
         else:
             frames.append(df_base[df_base["organismo"] == org])
 
     df = pd.concat(frames) if frames else df_base.iloc[0:0]
 
-    # =========================
-    # ALERTAS DEL MES (NIVEL 1)
-    # =========================
+    # --------------------------------------------------
+    # ALERTAS DEL MES
+    # --------------------------------------------------
+    st.markdown("---")
     st.markdown("## 🚨 Alertas del mes")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -159,22 +157,21 @@ if seccion == "📅 Panel Fiscal":
     col3.metric("🟢 En regla", count_estado("🟢"))
     col4.metric("⚪ Cumplidos", count_estado("⚪"))
 
+    # --------------------------------------------------
+    # ORDEN DE TRABAJO
+    # --------------------------------------------------
     st.markdown("---")
-
-    # =========================
-    # ORDEN DE TRABAJO SUGERIDO (NIVEL 1)
-    # =========================
     st.info(
         "🧠 **Orden de trabajo sugerido**\n\n"
-        "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n"
-        "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n"
+        "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n\n"
+        "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n\n"
         "3️⃣ **Tasas municipales** — última etapa del proceso.\n\n"
         "_Este panel está diseñado para organizar el trabajo diario del estudio._"
     )
 
-    # =========================
-    # ESTADO POR ORGANISMO (NIVEL 2)
-    # =========================
+    # --------------------------------------------------
+    # ESTADO GENERAL POR ORGANISMO
+    # --------------------------------------------------
     st.markdown("## 📌 Estado general por organismo")
 
     resumen_org = (
@@ -185,89 +182,89 @@ if seccion == "📅 Panel Fiscal":
             "🟢 En regla"
         )
         .reset_index()
-        .rename(columns={
-            "organismo": "Organismo",
-            "estado": "Situación"
-        })
+        .rename(columns={"organismo": "Organismo", "estado": "Situación"})
     )
 
-    st.dataframe(
-        resumen_org,
-        hide_index=True,
-        use_container_width=True
-    )
+    st.dataframe(resumen_org, use_container_width=True, hide_index=True)
 
-    # =========================
-    # DETALLE DE VENCIMIENTOS (NIVEL 3 · PLEGABLE)
-    # =========================
-    with st.expander("📂 Ver detalle de vencimientos por organismo"):
-
-        colA, colB = st.columns(2)
-        colC, colD = st.columns(2)
-
-        def render_detalle(titulo, filtro, col):
-            with col:
-                st.markdown(titulo)
-                if filtro.empty:
-                    st.info("Sin vencimientos este mes.")
-                else:
-                    st.dataframe(
-                        filtro[["terminacion", "vencimiento"]]
-                        .rename(columns={
-                            "terminacion": "Terminación CUIT",
-                            "vencimiento": "Vencimiento"
-                        }),
-                        hide_index=True,
-                        use_container_width=True
-                    )
-
-        if "ARCA" in seleccion:
-            render_detalle(
-                "### 🔵 ARCA",
-                df[df["organismo"] == "ARCA"],
-                colA
-            )
-
-        if "DGR Corrientes · IIBB" in seleccion:
-            render_detalle(
-                "### 🟢 DGR Corrientes · IIBB",
-                df[
-                    (df["organismo"] == "DGR") &
-                    (df["impuesto"] == "IIBB")
-                ],
-                colB
-            )
-
-        if "ATP Chaco · IIBB" in seleccion:
-            render_detalle(
-                "### 🟠 ATP Chaco · IIBB",
-                df[
-                    (df["organismo"] == "ATP(CHACO)") &
-                    (df["impuesto"] == "IIBB")
-                ],
-                colC
-            )
-
-        if "Tasa Municipal Corrientes" in seleccion:
-            render_detalle(
-                "### 🟣 Tasa Municipal · Corrientes",
-                df[
-                    (df["organismo"] == "ACOR") &
-                    (df["impuesto"] == "TS")
-                ],
-                colD
-            )
-
-    # =========================
-    # LEYENDA
-    # =========================
+    # --------------------------------------------------
+    # CONFIDENCIALIDAD
+    # --------------------------------------------------
     st.markdown("---")
-    st.markdown(
-        "⚪ **Cumplido** &nbsp;&nbsp; "
-        "🔴 **Vence hoy / mañana** &nbsp;&nbsp; "
-        "🟡 **Próximos días** &nbsp;&nbsp; "
-        "🟢 **En regla**"
+    st.warning(
+        "🔐 **Confidencialidad de la información**\n\n"
+        "Las claves fiscales y datos sensibles se utilizan **exclusivamente para el procesamiento solicitado**.\n\n"
+        "**NEA DATA no almacena credenciales ni información fiscal de los clientes.**"
     )
+
+    # --------------------------------------------------
+    # EJEMPLO DE EXCEL DE CARTERA (VISUAL)
+    # --------------------------------------------------
+    st.markdown("## 📄 Ejemplo de estructura de cartera")
+
+    df_ejemplo = pd.DataFrame({
+        "CUIT": ["30-70888534-9", "27-12345678-6"],
+        "RAZON_SOCIAL": ["Empresa Ejemplo SA", "Cliente Prueba"],
+        "ARCA": ["SI", "SI"],
+        "DGR_CORRIENTES": ["SI", "NO"],
+        "ATP_CHACO": ["NO", "NO"],
+        "TASA_MUNICIPAL": ["SI", "NO"],
+    })
+
+    st.dataframe(df_ejemplo, use_container_width=True)
+    st.caption("Ejemplo ilustrativo. El archivo real debe cargarse en formato Excel (.xlsx).")
+
+    # --------------------------------------------------
+    # CARGA DE CARTERA
+    # --------------------------------------------------
+    st.markdown("---")
+    st.markdown("## 📂 Carga de cartera de clientes")
+
+    archivo_cartera = st.file_uploader(
+        "Subí la cartera de clientes (Excel)",
+        type=["xlsx"]
+    )
+
+    def normalizar_si_no(x):
+        return str(x).strip().upper() == "SI"
+
+    if archivo_cartera:
+        try:
+            cartera = pd.read_excel(archivo_cartera, dtype=str)
+
+            columnas_requeridas = {
+                "CUIT", "RAZON_SOCIAL",
+                "ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"
+            }
+
+            if not columnas_requeridas.issubset(set(cartera.columns)):
+                st.error("❌ El Excel no tiene la estructura correcta.")
+                st.stop()
+
+            st.success("✅ Cartera cargada correctamente")
+
+            # ------------------------------------------
+            # RESUMEN AUTOMÁTICO
+            # ------------------------------------------
+            st.markdown("### 📊 Resumen de responsabilidades")
+
+            resumen = {
+                "ARCA": cartera["ARCA"].apply(normalizar_si_no).sum(),
+                "DGR Corrientes · IIBB": cartera["DGR_CORRIENTES"].apply(normalizar_si_no).sum(),
+                "ATP Chaco · IIBB": cartera["ATP_CHACO"].apply(normalizar_si_no).sum(),
+                "Tasa Municipal": cartera["TASA_MUNICIPAL"].apply(normalizar_si_no).sum(),
+            }
+
+            df_resumen = pd.DataFrame(
+                resumen.items(),
+                columns=["Organismo", "Clientes asignados"]
+            )
+
+            st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+
+        except Exception as e:
+            st.error(f"❌ Error leyendo la cartera: {e}")
+
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
