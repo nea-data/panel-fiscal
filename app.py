@@ -97,13 +97,10 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · PANEL FISCAL
+# SECCIÓN 1 · PANEL FISCAL (VISTA EJECUTIVA + CARTERA)
 # ======================================================
 if seccion == "📅 Panel Fiscal":
 
-    # --------------------------------------------------
-    # TÍTULO
-    # --------------------------------------------------
     st.markdown("## 📅 Panel Fiscal · Vencimientos del mes")
     st.markdown(
         "<div class='subtitulo'>Situación fiscal actual · vista ejecutiva</div>",
@@ -111,95 +108,84 @@ if seccion == "📅 Panel Fiscal":
     )
     st.markdown("---")
 
-    # --------------------------------------------------
-    # CARGA BASE DE VENCIMIENTOS
-    # --------------------------------------------------
-    df_base = cargar_vencimientos()
+    # ==================================================
+    # ORGANISMOS INCLUIDOS
+    # ==================================================
+    st.markdown("### 🏛️ Organismos incluidos en el análisis")
 
-    organismos_cfg = {
-        "ARCA": ("ARCA", None),
-        "DGR Corrientes · IIBB": ("DGR", "IIBB"),
-        "ATP Chaco · IIBB": ("ATP(CHACO)", "IIBB"),
-        "Tasa Municipal Corrientes": ("ACOR", "TS"),
-    }
+    organismos_disponibles = [
+        "ARCA",
+        "DGR Corrientes · IIBB",
+        "ATP Chaco · IIBB",
+        "Tasa Municipal"
+    ]
 
     seleccion = st.multiselect(
-        "🏛️ Organismos incluidos en el análisis:",
-        options=list(organismos_cfg.keys()),
+        "Seleccioná los organismos relevantes:",
+        options=organismos_disponibles,
         default=["ARCA", "DGR Corrientes · IIBB"]
     )
 
-    frames = []
-    for key in seleccion:
-        org, imp = organismos_cfg[key]
-        if imp:
-            frames.append(
-                df_base[(df_base["organismo"] == org) & (df_base["impuesto"] == imp)]
-            )
-        else:
-            frames.append(df_base[df_base["organismo"] == org])
-
-    df = pd.concat(frames) if frames else df_base.iloc[0:0]
-
-    # --------------------------------------------------
-    # ALERTAS DEL MES
-    # --------------------------------------------------
     st.markdown("---")
+
+    # ==================================================
+    # ALERTAS (placeholder lógico, sin vencimientos aún)
+    # ==================================================
     st.markdown("## 🚨 Alertas del mes")
 
     col1, col2, col3, col4 = st.columns(4)
 
-    def count_estado(e):
-        return int((df["estado"] == e).sum())
+    col1.metric("🔴 Vence hoy / mañana", 0)
+    col2.metric("🟡 Próximos días", 0)
+    col3.metric("🟢 En regla", 8)
+    col4.metric("⚪ Cumplidos", 0)
 
-    col1.metric("🔴 Vence hoy / mañana", count_estado("🔴"))
-    col2.metric("🟡 Próximos días", count_estado("🟡"))
-    col3.metric("🟢 En regla", count_estado("🟢"))
-    col4.metric("⚪ Cumplidos", count_estado("⚪"))
-
-    # --------------------------------------------------
-    # ORDEN DE TRABAJO
-    # --------------------------------------------------
     st.markdown("---")
+
+    # ==================================================
+    # ORDEN DE TRABAJO
+    # ==================================================
+    st.markdown("## 🧠 Orden de trabajo sugerido")
+
     st.info(
-        "🧠 **Orden de trabajo sugerido**\n\n"
         "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n\n"
         "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n\n"
         "3️⃣ **Tasas municipales** — última etapa del proceso.\n\n"
         "_Este panel está diseñado para organizar el trabajo diario del estudio._"
     )
 
-    # --------------------------------------------------
+    st.markdown("---")
+
+    # ==================================================
     # ESTADO GENERAL POR ORGANISMO
-    # --------------------------------------------------
+    # ==================================================
     st.markdown("## 📌 Estado general por organismo")
 
-    resumen_org = (
-        df.groupby("organismo")["estado"]
-        .apply(lambda x:
-            "🔴 Riesgo alto" if "🔴" in x.values else
-            "🟡 Riesgo medio" if "🟡" in x.values else
-            "🟢 En regla"
-        )
-        .reset_index()
-        .rename(columns={"organismo": "Organismo", "estado": "Situación"})
-    )
+    df_estado = pd.DataFrame({
+        "Organismo": ["ARCA", "DGR"],
+        "Situación": ["🟢 En regla", "🟢 En regla"]
+    })
 
-    st.dataframe(resumen_org, use_container_width=True, hide_index=True)
+    st.dataframe(df_estado, hide_index=True, use_container_width=True)
 
-    # --------------------------------------------------
-    # CONFIDENCIALIDAD
-    # --------------------------------------------------
     st.markdown("---")
+
+    # ==================================================
+    # CONFIDENCIALIDAD
+    # ==================================================
+    st.markdown("## 🔐 Confidencialidad de la información")
+
     st.warning(
-        "🔐 **Confidencialidad de la información**\n\n"
-        "Las claves fiscales y datos sensibles se utilizan **exclusivamente para el procesamiento solicitado**.\n\n"
+        "Las claves fiscales y datos sensibles se utilizan **exclusivamente** "
+        "para el procesamiento solicitado.\n\n"
         "**NEA DATA no almacena credenciales ni información fiscal de los clientes.**"
     )
 
-    # --------------------------------------------------
-    # EJEMPLO DE EXCEL DE CARTERA (VISUAL)
-    # --------------------------------------------------
+    st.markdown("---")
+
+    # ==================================================
+    # EJEMPLO VISUAL DE CARTERA (NO DESCARGABLE)
+    # ==================================================
     st.markdown("## 📄 Ejemplo de estructura de cartera")
 
     df_ejemplo = pd.DataFrame({
@@ -211,59 +197,64 @@ if seccion == "📅 Panel Fiscal":
         "TASA_MUNICIPAL": ["SI", "NO"],
     })
 
-    st.dataframe(df_ejemplo, use_container_width=True)
-    st.caption("Ejemplo ilustrativo. El archivo real debe cargarse en formato Excel (.xlsx).")
+    st.caption("Ejemplo ilustrativo. La estructura debe respetarse para el análisis.")
+    st.dataframe(df_ejemplo, hide_index=True, use_container_width=True)
 
-    # --------------------------------------------------
-    # CARGA DE CARTERA
-    # --------------------------------------------------
     st.markdown("---")
-    st.markdown("## 📂 Carga de cartera de clientes")
+
+    # ==================================================
+    # CARGA DE CARTERA REAL
+    # ==================================================
+    st.markdown("## 📤 Cargar cartera de clientes")
 
     archivo_cartera = st.file_uploader(
-        "Subí la cartera de clientes (Excel)",
+        "Subí el Excel con tu cartera de clientes",
         type=["xlsx"]
     )
 
-    def normalizar_si_no(x):
-        return str(x).strip().upper() == "SI"
-
     if archivo_cartera:
         try:
-            cartera = pd.read_excel(archivo_cartera, dtype=str)
-
-            columnas_requeridas = {
-                "CUIT", "RAZON_SOCIAL",
-                "ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"
-            }
-
-            if not columnas_requeridas.issubset(set(cartera.columns)):
-                st.error("❌ El Excel no tiene la estructura correcta.")
-                st.stop()
+            df_cartera = pd.read_excel(archivo_cartera, dtype=str)
+            df_cartera.columns = [c.strip().upper() for c in df_cartera.columns]
 
             st.success("✅ Cartera cargada correctamente")
+            st.dataframe(df_cartera.head(20), use_container_width=True)
 
-            # ------------------------------------------
-            # RESUMEN AUTOMÁTICO
-            # ------------------------------------------
-            st.markdown("### 📊 Resumen de responsabilidades")
+            # Normalizar SI / NO
+            for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+                if col in df_cartera.columns:
+                    df_cartera[col] = (
+                        df_cartera[col]
+                        .fillna("NO")
+                        .str.upper()
+                        .str.strip()
+                    )
+
+            st.markdown("### 📊 Resumen automático por organismo")
 
             resumen = {
-                "ARCA": cartera["ARCA"].apply(normalizar_si_no).sum(),
-                "DGR Corrientes · IIBB": cartera["DGR_CORRIENTES"].apply(normalizar_si_no).sum(),
-                "ATP Chaco · IIBB": cartera["ATP_CHACO"].apply(normalizar_si_no).sum(),
-                "Tasa Municipal": cartera["TASA_MUNICIPAL"].apply(normalizar_si_no).sum(),
+                "ARCA": int((df_cartera.get("ARCA") == "SI").sum()),
+                "DGR Corrientes": int((df_cartera.get("DGR_CORRIENTES") == "SI").sum()),
+                "ATP Chaco": int((df_cartera.get("ATP_CHACO") == "SI").sum()),
+                "Tasa Municipal": int((df_cartera.get("TASA_MUNICIPAL") == "SI").sum()),
             }
 
             df_resumen = pd.DataFrame(
                 resumen.items(),
-                columns=["Organismo", "Clientes asignados"]
+                columns=["Organismo", "CUITs involucrados"]
             )
 
-            st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+            st.dataframe(df_resumen, hide_index=True, use_container_width=True)
+
+            st.info(
+                "Este resumen permite **priorizar tareas** y organizar el trabajo "
+                "por organismo, incluso sin sistema de login."
+            )
 
         except Exception as e:
-            st.error(f"❌ Error leyendo la cartera: {e}")
+            st.error("❌ Error procesando el archivo de cartera")
+            st.exception(e)
+
 
 
 # ======================================================
