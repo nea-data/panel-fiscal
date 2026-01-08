@@ -99,11 +99,12 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
-if seccion == "📅 Panel Fiscal":
+if seccion == "📊 Gestión Fiscal":
 
     st.markdown("## 📊 Planificación fiscal por cartera")
     st.markdown(
-        "Vista ejecutiva para organizar el trabajo diario del estudio en función de la cartera y los vencimientos reales."
+        "Vista ejecutiva para **ordenar el trabajo diario del estudio** "
+        "en función de la cartera de clientes y los vencimientos reales."
     )
     st.markdown("---")
 
@@ -130,94 +131,148 @@ if seccion == "📅 Panel Fiscal":
     )
 
     archivo = st.file_uploader(
-        "📤 Subí tu cartera completa",
+        "📤 Subí tu cartera completa (Excel)",
         type=["xlsx"]
     )
 
+    # ======================================================
+    # UX GUIADA (SI NO HAY ARCHIVO)
+    # ======================================================
+
     if not archivo:
-        st.info("Subí el Excel para generar la planificación automática.")
-        st.stop()
+        st.info(
+            "📂 **Para comenzar:**\n"
+            "1️⃣ Descargá el modelo de cartera\n"
+            "2️⃣ Completá los CUITs y organismos (SI / NO)\n"
+            "3️⃣ Subí el Excel para generar la planificación automática"
+        )
+
+        st.markdown("🔎 Una vez cargada la cartera, el sistema mostrará:")
+        st.markdown(
+            "- 🔥 Orden de trabajo sugerido\n"
+            "- ⏱️ Prioridad real según vencimientos\n"
+            "- 📌 Resumen operativo por organismo"
+        )
+        return
 
     # ======================================================
-    # CARGA DE CARTERA
+    # CARGA Y NORMALIZACIÓN DE CARTERA
     # ======================================================
 
     df_cartera = pd.read_excel(archivo)
     df_cartera.columns = df_cartera.columns.str.upper().str.strip()
 
-    for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
-        if col in df_cartera.columns:
-            df_cartera[col] = (
-                df_cartera[col]
-                .astype(str)
-                .str.upper()
-                .str.strip()
-            )
-
     # ======================================================
     # CARGA DE VENCIMIENTOS BASE
+    # (usa tu core existente)
     # ======================================================
 
     df_venc = cargar_vencimientos()
 
+    hoy = date.today()
+
+    df_venc["fecha"] = pd.to_datetime(
+        dict(year=hoy.year, month=df_venc["mes"], day=df_venc["dia"]),
+        errors="coerce"
+    )
+    df_venc["dias_restantes"] = (df_venc["fecha"] - pd.Timestamp(hoy)).dt.days
+
     # ======================================================
-    # CONFIGURACIÓN DE ORGANISMOS
+    # REGLAS DE PRIORIDAD (NEGOCIO)
     # ======================================================
 
-    ORGANISMOS = {
-        "ARCA": {"organismo": "ARCA", "prioridad": 1},
-        "DGR_CORRIENTES": {"organismo": "DGR", "prioridad": 2},
-        "ATP_CHACO": {"organismo": "ATP(CHACO)", "prioridad": 2},
-        "TASA_MUNICIPAL": {"impuesto": "TS", "prioridad": 3},
+    PRIORIDAD_BASE = {
+        "ARCA": 1,
+        "DGR": 2,
+        "ATP": 2,
+        "TS": 3
     }
+
+    def ajuste_por_dias(dias):
+        if dias <= 2:
+            return -2
+        elif dias <= 5:
+            return -1
+        else:
+            return 0
+
+    # ======================================================
+    # ARMADO DE PLAN OPERATIVO
+    # ======================================================
 
     registros = []
 
     for _, row in df_cartera.iterrows():
-        for org, cfg in ORGANISMOS.items():
-            if row.get(org) != "SI":
-                continue
+        for col, base in [
+            ("ARCA", "ARCA"),
+            ("DGR_CORRIENTES", "DGR"),
+            ("ATP_CHACO", "ATP"),
+            ("TASA_MUNICIPAL", "TS"),
+        ]:
+            if str(row.get(col)).strip().upper() == "SI":
+                df_org = df_venc[df_venc["organismo"].str.contains(base, case=False)]
 
-            if "organismo" in cfg:
-                df_org = df_venc[df_venc["organismo"] == cfg["organismo"]]
-            else:
-                df_org = df_venc[df_venc["impuesto"] == cfg["impuesto"]]
+                for _, v in df_org.iterrows():
+                    prioridad_final = (
+                        PRIORIDAD_BASE[base]
+                        + ajuste_por_dias(v["dias_restantes"])
+                    )
 
-            for _, v in df_org.iterrows():
-                dias = v["dias_restantes"]
-
-                if dias <= 2:
-                    ajuste = -2
-                elif dias <= 5:
-                    ajuste = -1
-                else:
-                    ajuste = 0
-
-                registros.append({
-                    "CUIT": row["CUIT"],
-                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                    "ORGANISMO": org,
-                    "IMPUESTO": v["impuesto"],
-                    "FECHA": v["fecha"],
-                    "DIAS": dias,
-                    "PRIORIDAD": cfg["prioridad"] + ajuste
-                })
+                    registros.append({
+                        "CUIT": row["CUIT"],
+                        "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
+                        "ORGANISMO": base,
+                        "IMPUESTO": v["impuesto"],
+                        "FECHA": v["fecha"].date(),
+                        "DIAS": v["dias_restantes"],
+                        "PRIORIDAD": prioridad_final
+                    })
 
     df_plan = pd.DataFrame(registros)
 
     if df_plan.empty:
-        st.warning("No se generaron tareas para la cartera cargada.")
-        st.stop()
+        st.warning("⚠️ No se generaron tareas con la cartera cargada.")
+        return
+
+    # ======================================================
+    # VISTA EJECUTIVA (CLAVE)
+    # ======================================================
 
     st.markdown("### 🔥 Orden de trabajo sugerido")
 
-    df_plan = df_plan.sort_values(["PRIORIDAD", "DIAS"])
+    df_plan = df_plan.sort_values(
+        ["PRIORIDAD", "DIAS"],
+        ascending=[True, True]
+    )
 
     st.dataframe(
-        df_plan,
+        df_plan[
+            ["CUIT", "RAZON_SOCIAL", "ORGANISMO", "IMPUESTO", "FECHA", "DIAS", "PRIORIDAD"]
+        ],
         use_container_width=True,
         hide_index=True
     )
+
+    # ======================================================
+    # RESUMEN OPERATIVO
+    # ======================================================
+
+    st.markdown("### 📌 Resumen operativo por organismo")
+
+    resumen = (
+        df_plan.groupby("ORGANISMO")
+        .agg(
+            Casos=("CUIT", "count"),
+            Urgentes=("DIAS", lambda x: (x <= 2).sum())
+        )
+        .reset_index()
+    )
+
+    st.dataframe(resumen, hide_index=True, use_container_width=True)
+
+    # ======================================================
+    # DETALLE COLAPSADO
+    # ======================================================
 
     with st.expander("📂 Ver detalle completo por CUIT"):
         st.dataframe(df_plan, use_container_width=True, hide_index=True)
