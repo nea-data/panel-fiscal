@@ -113,7 +113,7 @@ if seccion == "📅 Panel Fiscal":
     # ======================================================
     # PASO 0 · CARTERA (MODELO + CARGA)
     # ======================================================
-    st.markdown("### 📥 Paso 0 · Cartera de clientes (Excel)")
+    st.markdown("### 📥 Cartera de clientes (Excel)")
     st.caption(
         "Descargá el modelo, completalo con tus CUITs y marcá qué obligaciones aplica para cada cliente. "
         "Luego subilo para generar el resumen del mes."
@@ -150,8 +150,6 @@ if seccion == "📅 Panel Fiscal":
     # ======================================================
     st.info(
         "🔒 **Confidencialidad y uso de credenciales**\n\n"
-        "- Las credenciales y/o claves que puedas utilizar en procesos externos **son responsabilidad del usuario**.\n"
-        "- NEA DATA **no almacena** claves ni credenciales de clientes.\n"
         "- Los datos cargados se utilizan **únicamente para el procesamiento solicitado** y para generar el resumen."
     )
 
