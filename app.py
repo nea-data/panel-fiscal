@@ -101,9 +101,9 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 if seccion == "📅 Panel Fiscal":
 
-    # --------------------------------------------------
+    # =========================
     # ENCABEZADO
-    # --------------------------------------------------
+    # =========================
     st.markdown("## 📅 Panel Fiscal · Vencimientos del mes")
     st.markdown(
         "<div class='subtitulo'>Situación fiscal actual · vista ejecutiva</div>",
@@ -111,11 +111,11 @@ if seccion == "📅 Panel Fiscal":
     )
     st.markdown("---")
 
+    # =========================
+    # CARGA BASE
+    # =========================
     df_base = cargar_vencimientos()
 
-    # --------------------------------------------------
-    # SELECCIÓN DE ORGANISMOS
-    # --------------------------------------------------
     organismos_cfg = {
         "ARCA": ("ARCA", None),
         "DGR Corrientes · IIBB": ("DGR", "IIBB"),
@@ -144,9 +144,9 @@ if seccion == "📅 Panel Fiscal":
 
     df = pd.concat(frames) if frames else df_base.iloc[0:0]
 
-    # --------------------------------------------------
-    # NIVEL 1 · ALERTAS DEL MES
-    # --------------------------------------------------
+    # =========================
+    # ALERTAS DEL MES (NIVEL 1)
+    # =========================
     st.markdown("## 🚨 Alertas del mes")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -161,10 +161,21 @@ if seccion == "📅 Panel Fiscal":
 
     st.markdown("---")
 
-    # --------------------------------------------------
-    # NIVEL 2 · ESTADO POR ORGANISMO
-    # --------------------------------------------------
-    st.markdown("## 📌 Estado por organismo")
+    # =========================
+    # ORDEN DE TRABAJO SUGERIDO (NIVEL 1)
+    # =========================
+    st.info(
+        "🧠 **Orden de trabajo sugerido**\n\n"
+        "1️⃣ **ARCA** — siempre priorizar, independientemente de la fecha.\n"
+        "2️⃣ **Ingresos Brutos** — se devengan a partir de la información fiscal base.\n"
+        "3️⃣ **Tasas municipales** — última etapa del proceso.\n\n"
+        "_Este panel está diseñado para organizar el trabajo diario del estudio._"
+    )
+
+    # =========================
+    # ESTADO POR ORGANISMO (NIVEL 2)
+    # =========================
+    st.markdown("## 📌 Estado general por organismo")
 
     resumen_org = (
         df.groupby("organismo")["estado"]
@@ -174,7 +185,10 @@ if seccion == "📅 Panel Fiscal":
             "🟢 En regla"
         )
         .reset_index()
-        .rename(columns={"organismo": "Organismo", "estado": "Situación"})
+        .rename(columns={
+            "organismo": "Organismo",
+            "estado": "Situación"
+        })
     )
 
     st.dataframe(
@@ -183,95 +197,77 @@ if seccion == "📅 Panel Fiscal":
         use_container_width=True
     )
 
-    # --------------------------------------------------
-    # BLOQUE CLAVE · ORDEN DE TRABAJO
-    # --------------------------------------------------
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style="background-color:#0f2a44;padding:18px;border-radius:8px">
-        🧠 <b>Orden de trabajo sugerido</b><br><br>
-        <b>1️⃣ ARCA</b> — siempre priorizar, independientemente de la fecha.<br>
-        <b>2️⃣ Ingresos Brutos</b> — se devengan a partir de la información fiscal base.<br>
-        <b>3️⃣ Tasas municipales</b> — última etapa del proceso.<br><br>
-        <i>Este panel está diseñado para organizar el trabajo diario, no para listar normativa.</i>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # =========================
+    # DETALLE DE VENCIMIENTOS (NIVEL 3 · PLEGABLE)
+    # =========================
+    with st.expander("📂 Ver detalle de vencimientos por organismo"):
 
-    # --------------------------------------------------
-    # NIVEL 3 · DETALLE DE VENCIMIENTOS (REFERENCIA)
-    # --------------------------------------------------
-    st.markdown("---")
-    st.markdown("## 📅 Detalle de vencimientos")
+        colA, colB = st.columns(2)
+        colC, colD = st.columns(2)
 
-    colA, colB = st.columns(2)
-    colC, colD = st.columns(2)
+        def render_detalle(titulo, filtro, col):
+            with col:
+                st.markdown(titulo)
+                if filtro.empty:
+                    st.info("Sin vencimientos este mes.")
+                else:
+                    st.dataframe(
+                        filtro[["terminacion", "vencimiento"]]
+                        .rename(columns={
+                            "terminacion": "Terminación CUIT",
+                            "vencimiento": "Vencimiento"
+                        }),
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
-    def render_detalle(titulo, filtro, col):
-        with col:
-            st.markdown(titulo)
-            if filtro.empty:
-                st.info("Sin vencimientos este mes.")
-            else:
-                st.dataframe(
-                    filtro[["terminacion", "vencimiento"]]
-                    .rename(columns={
-                        "terminacion": "Terminación CUIT",
-                        "vencimiento": "Vencimiento"
-                    }),
-                    hide_index=True,
-                    use_container_width=True
-                )
+        if "ARCA" in seleccion:
+            render_detalle(
+                "### 🔵 ARCA",
+                df[df["organismo"] == "ARCA"],
+                colA
+            )
 
-    if "ARCA" in seleccion:
-        render_detalle(
-            "### 🔵 ARCA",
-            df[df["organismo"] == "ARCA"],
-            colA
-        )
+        if "DGR Corrientes · IIBB" in seleccion:
+            render_detalle(
+                "### 🟢 DGR Corrientes · IIBB",
+                df[
+                    (df["organismo"] == "DGR") &
+                    (df["impuesto"] == "IIBB")
+                ],
+                colB
+            )
 
-    if "DGR Corrientes · IIBB" in seleccion:
-        render_detalle(
-            "### 🟢 DGR Corrientes · IIBB",
-            df[
-                (df["organismo"] == "DGR") &
-                (df["impuesto"] == "IIBB")
-            ],
-            colB
-        )
+        if "ATP Chaco · IIBB" in seleccion:
+            render_detalle(
+                "### 🟠 ATP Chaco · IIBB",
+                df[
+                    (df["organismo"] == "ATP(CHACO)") &
+                    (df["impuesto"] == "IIBB")
+                ],
+                colC
+            )
 
-    if "ATP Chaco · IIBB" in seleccion:
-        render_detalle(
-            "### 🟠 ATP Chaco · IIBB",
-            df[
-                (df["organismo"] == "ATP(CHACO)") &
-                (df["impuesto"] == "IIBB")
-            ],
-            colC
-        )
+        if "Tasa Municipal Corrientes" in seleccion:
+            render_detalle(
+                "### 🟣 Tasa Municipal · Corrientes",
+                df[
+                    (df["organismo"] == "ACOR") &
+                    (df["impuesto"] == "TS")
+                ],
+                colD
+            )
 
-    if "Tasa Municipal Corrientes" in seleccion:
-        render_detalle(
-            "### 🟣 Tasa Municipal · Corrientes",
-            df[
-                (df["organismo"] == "ACOR") &
-                (df["impuesto"] == "TS")
-            ],
-            colD
-        )
-
-    # --------------------------------------------------
+    # =========================
     # LEYENDA
-    # --------------------------------------------------
+    # =========================
     st.markdown("---")
     st.markdown(
-        "⚪ **Cumplido** &nbsp;&nbsp; 🔴 **Vence hoy / mañana** &nbsp;&nbsp; "
-        "🟡 **Próximos días** &nbsp;&nbsp; 🟢 **En regla**"
+        "⚪ **Cumplido** &nbsp;&nbsp; "
+        "🔴 **Vence hoy / mañana** &nbsp;&nbsp; "
+        "🟡 **Próximos días** &nbsp;&nbsp; "
+        "🟢 **En regla**"
     )
-
-
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
