@@ -1,7 +1,6 @@
 import smtplib
 from email.message import EmailMessage
 
-
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
@@ -43,5 +42,6 @@ def enviar_pedido(
             smtp.send_message(msg)
 
     except Exception as e:
-        raise RuntimeError("Error enviando el pedido por correo") from e
+        raise RuntimeError(f"Error enviando el pedido por correo: {e}") from e
+
 
