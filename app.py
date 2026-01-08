@@ -100,7 +100,7 @@ def normalizar_col(c: str) -> str:
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
 
-if seccion == "📊 Gestión Fiscal":
+if seccion == "📅 Gestión Fiscal":
 
     st.markdown("## 📊 Planificación fiscal por cartera")
     st.markdown(
@@ -162,17 +162,16 @@ if seccion == "📊 Gestión Fiscal":
             )
 
     # ======================================================
-    # VENCIMIENTOS BASE (CORE REAL)
+    # VENCIMIENTOS BASE (CORE)
     # ======================================================
 
     df_venc = cargar_vencimientos()
 
-    hoy = date.today()
-    df_venc["fecha"] = pd.to_datetime(
-        dict(year=hoy.year, month=df_venc["mes"], day=df_venc["dia"]),
-        errors="coerce"
-    )
-    df_venc["dias_restantes"] = (df_venc["fecha"] - pd.Timestamp(hoy)).dt.days
+    # Normalización defensiva (CLAVE)
+    df_venc.columns = df_venc.columns.str.lower().str.strip()
+    df_venc["organismo"] = df_venc["organismo"].astype(str).str.upper().str.strip()
+    df_venc["impuesto"] = df_venc["impuesto"].astype(str).str.upper().str.strip()
+    df_venc["terminacion"] = df_venc["terminacion"].astype(str).str.strip()
 
     # ======================================================
     # ARMADO OPERATIVO POR CUIT
@@ -193,7 +192,7 @@ if seccion == "📊 Gestión Fiscal":
             if row.get(org) != "SI":
                 continue
 
-            # Match organismo real en vencimientos
+            # Match correcto con vencimientos reales
             if org == "ARCA":
                 df_org = df_venc[df_venc["organismo"] == "ARCA"]
             elif org == "DGR_CORRIENTES":
@@ -281,7 +280,6 @@ if seccion == "📊 Gestión Fiscal":
             use_container_width=True,
             hide_index=True
         )
-
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
