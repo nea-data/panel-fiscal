@@ -99,12 +99,13 @@ def normalizar_col(c: str) -> str:
 # ======================================================
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
+
 if seccion == "📊 Gestión Fiscal":
 
     st.markdown("## 📊 Planificación fiscal por cartera")
     st.markdown(
-        "Vista ejecutiva para **ordenar el trabajo diario del estudio** "
-        "en función de la cartera de clientes y los vencimientos reales."
+        "Vista ejecutiva para organizar el trabajo diario del estudio "
+        "combinando cartera de clientes y vencimientos reales."
     )
     st.markdown("---")
 
@@ -131,29 +132,18 @@ if seccion == "📊 Gestión Fiscal":
     )
 
     archivo = st.file_uploader(
-        "📤 Subí tu cartera completa (Excel)",
+        "📤 Subí tu cartera completa",
         type=["xlsx"]
     )
 
-    # ======================================================
-    # UX GUIADA (SI NO HAY ARCHIVO)
-    # ======================================================
-
     if not archivo:
         st.info(
-            "📂 **Para comenzar:**\n"
+            "📂 Para comenzar:\n"
             "1️⃣ Descargá el modelo de cartera\n"
             "2️⃣ Completá los CUITs y organismos (SI / NO)\n"
             "3️⃣ Subí el Excel para generar la planificación automática"
         )
-
-        st.markdown("🔎 Una vez cargada la cartera, el sistema mostrará:")
-        st.markdown(
-            "- 🔥 Orden de trabajo sugerido\n"
-            "- ⏱️ Prioridad real según vencimientos\n"
-            "- 📌 Resumen operativo por organismo"
-        )
-        return
+        st.stop()
 
     # ======================================================
     # CARGA Y NORMALIZACIÓN DE CARTERA
@@ -162,15 +152,22 @@ if seccion == "📊 Gestión Fiscal":
     df_cartera = pd.read_excel(archivo)
     df_cartera.columns = df_cartera.columns.str.upper().str.strip()
 
+    for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+        if col in df_cartera.columns:
+            df_cartera[col] = (
+                df_cartera[col]
+                .astype(str)
+                .str.upper()
+                .str.strip()
+            )
+
     # ======================================================
-    # CARGA DE VENCIMIENTOS BASE
-    # (usa tu core existente)
+    # VENCIMIENTOS BASE (CORE REAL)
     # ======================================================
 
     df_venc = cargar_vencimientos()
 
     hoy = date.today()
-
     df_venc["fecha"] = pd.to_datetime(
         dict(year=hoy.year, month=df_venc["mes"], day=df_venc["dia"]),
         errors="coerce"
@@ -178,67 +175,69 @@ if seccion == "📊 Gestión Fiscal":
     df_venc["dias_restantes"] = (df_venc["fecha"] - pd.Timestamp(hoy)).dt.days
 
     # ======================================================
-    # REGLAS DE PRIORIDAD (NEGOCIO)
+    # ARMADO OPERATIVO POR CUIT
     # ======================================================
 
     PRIORIDAD_BASE = {
         "ARCA": 1,
-        "DGR": 2,
-        "ATP": 2,
-        "TS": 3
+        "DGR_CORRIENTES": 2,
+        "ATP_CHACO": 2,
+        "TASA_MUNICIPAL": 3
     }
-
-    def ajuste_por_dias(dias):
-        if dias <= 2:
-            return -2
-        elif dias <= 5:
-            return -1
-        else:
-            return 0
-
-    # ======================================================
-    # ARMADO DE PLAN OPERATIVO
-    # ======================================================
 
     registros = []
 
     for _, row in df_cartera.iterrows():
-        for col, base in [
-            ("ARCA", "ARCA"),
-            ("DGR_CORRIENTES", "DGR"),
-            ("ATP_CHACO", "ATP"),
-            ("TASA_MUNICIPAL", "TS"),
-        ]:
-            if str(row.get(col)).strip().upper() == "SI":
-                df_org = df_venc[df_venc["organismo"].str.contains(base, case=False)]
+        for org, prioridad_base in PRIORIDAD_BASE.items():
 
-                for _, v in df_org.iterrows():
-                    prioridad_final = (
-                        PRIORIDAD_BASE[base]
-                        + ajuste_por_dias(v["dias_restantes"])
-                    )
+            if row.get(org) != "SI":
+                continue
 
-                    registros.append({
-                        "CUIT": row["CUIT"],
-                        "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                        "ORGANISMO": base,
-                        "IMPUESTO": v["impuesto"],
-                        "FECHA": v["fecha"].date(),
-                        "DIAS": v["dias_restantes"],
-                        "PRIORIDAD": prioridad_final
-                    })
+            # Match organismo real en vencimientos
+            if org == "ARCA":
+                df_org = df_venc[df_venc["organismo"] == "ARCA"]
+            elif org == "DGR_CORRIENTES":
+                df_org = df_venc[df_venc["organismo"] == "DGR"]
+            elif org == "ATP_CHACO":
+                df_org = df_venc[df_venc["organismo"] == "ATP(CHACO)"]
+            elif org == "TASA_MUNICIPAL":
+                df_org = df_venc[df_venc["impuesto"] == "TS"]
+            else:
+                continue
+
+            for _, v in df_org.iterrows():
+
+                # Ajuste por urgencia real
+                if v["dias_restantes"] <= 2:
+                    ajuste = -2
+                elif v["dias_restantes"] <= 5:
+                    ajuste = -1
+                else:
+                    ajuste = 0
+
+                prioridad_final = prioridad_base + ajuste
+
+                registros.append({
+                    "CUIT": row["CUIT"],
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
+                    "ORGANISMO": org,
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "PRIORIDAD": prioridad_final
+                })
 
     df_plan = pd.DataFrame(registros)
 
-    if df_plan.empty:
-        st.warning("⚠️ No se generaron tareas con la cartera cargada.")
-        return
-
     # ======================================================
-    # VISTA EJECUTIVA (CLAVE)
+    # VISTA EJECUTIVA – ORDEN DE TRABAJO
     # ======================================================
 
     st.markdown("### 🔥 Orden de trabajo sugerido")
+
+    if df_plan.empty:
+        st.warning("No se generaron tareas con la cartera cargada.")
+        st.stop()
 
     df_plan = df_plan.sort_values(
         ["PRIORIDAD", "DIAS"],
@@ -254,7 +253,7 @@ if seccion == "📊 Gestión Fiscal":
     )
 
     # ======================================================
-    # RESUMEN OPERATIVO
+    # RESUMEN EJECUTIVO
     # ======================================================
 
     st.markdown("### 📌 Resumen operativo por organismo")
@@ -271,12 +270,17 @@ if seccion == "📊 Gestión Fiscal":
     st.dataframe(resumen, hide_index=True, use_container_width=True)
 
     # ======================================================
-    # DETALLE COLAPSADO
+    # DESPLEGABLE FINAL – TODOS LOS VENCIMIENTOS
     # ======================================================
 
-    with st.expander("📂 Ver detalle completo por CUIT"):
-        st.dataframe(df_plan, use_container_width=True, hide_index=True)
-
+    with st.expander("📅 Ver todos los vencimientos del mes"):
+        st.dataframe(
+            df_venc.sort_values("fecha")[
+                ["organismo", "impuesto", "terminacion", "fecha"]
+            ],
+            use_container_width=True,
+            hide_index=True
+        )
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
