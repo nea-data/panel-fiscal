@@ -33,7 +33,7 @@ st.sidebar.markdown("Soluciones en Ciencia de Datos y Automatización")
 st.sidebar.markdown("---")
 
 MENU = [
-    "📅 Panel Fiscal",
+    "📅 Gestión Fiscal",
     "🔎 Consultor de CUITs",
     "📤 Emitidos / Recibidos"
 ]
@@ -97,12 +97,12 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · PANEL FISCAL (con Cartera)
+# SECCIÓN 1 · GESTIÓN FISCAL (con Cartera)
 # ======================================================
-if seccion == "📅 Panel Fiscal":
+if seccion == "📅 Gestión Fiscal":
 
-    st.markdown("## 📅 Panel Fiscal")
-    st.markdown("<div class='subtitulo'>Gestión por cartera · estudios contables</div>", unsafe_allow_html=True)
+    st.markdown("## 📅 Gestión Fiscal")
+    st.markdown("<div class='subtitulo'>Clientes · obligaciones · vencimientos</div>", unsafe_allow_html=True)
     st.markdown("---")
 
     # ======================================================
