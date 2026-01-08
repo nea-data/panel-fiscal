@@ -97,157 +97,126 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · PANEL FISCAL (CARTERA + PRIORIZACIÓN)
+# SECCIÓN 1 · GESTIÓN DE CARTERA FISCAL
 # ======================================================
-if seccion == "📅 Panel Fiscal":
 
-    st.markdown("## 📅 Panel Fiscal · Planificación de Cartera")
-    st.markdown(
-        "<div class='subtitulo'>Priorización automática de tareas fiscales</div>",
-        unsafe_allow_html=True
-    )
-    st.markdown("---")
+st.markdown("## 📂 Gestión de cartera fiscal")
+st.caption("Planificación mensual · estudios contables")
 
-    # ======================================================
-    # BLOQUE 1 · DESCARGA EXCEL MODELO
-    # ======================================================
-    st.markdown("### 📥 Paso 1 · Descargar Excel modelo de cartera")
+# ------------------------------------------------------
+# MODELO EXCEL
+# ------------------------------------------------------
+st.markdown("### 📥 Modelo de cartera (Excel)")
 
-    st.info(
-        "Este archivo permite definir la **cartera completa de clientes** del estudio.\n\n"
-        "✔ Un CUIT puede tener **más de un organismo asociado**.\n"
-        "✔ El sistema prioriza automáticamente las tareas comenzando por **ARCA**."
-    )
+modelo_df = pd.DataFrame({
+    "CUIT": ["20301234567"],
+    "RAZON_SOCIAL": ["Cliente Ejemplo SA"],
+    "ARCA": ["SI"],
+    "DGR_CORRIENTES": ["SI"],
+    "ATP_CHACO": ["NO"],
+    "TASA_MUNICIPAL": ["NO"]
+})
 
-    df_modelo = pd.DataFrame({
-        "CUIT": ["20304050607"],
-        "RAZON_SOCIAL": ["Ejemplo SA"],
-        "ARCA": ["SI"],
-        "DGR_IIBB": ["SI"],
-        "ATP_IIBB": ["NO"],
-        "TASA_MUNICIPAL": ["NO"],
-        "OBSERVACIONES": ["Presenta IVA e IIBB Corrientes"]
-    })
+buffer = BytesIO()
+with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+    modelo_df.to_excel(writer, index=False, sheet_name="Cartera")
+    workbook = writer.book
+    worksheet = writer.sheets["Cartera"]
+    worksheet.set_column("A:F", 22)
 
-    st.download_button(
-        "⬇️ Descargar Excel modelo",
-        data=excel_bytes(df_modelo),
-        file_name="modelo_cartera_fiscal.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+st.download_button(
+    label="⬇️ Descargar modelo de cartera",
+    data=buffer.getvalue(),
+    file_name="modelo_cartera_fiscal.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
-    st.markdown("---")
+# ------------------------------------------------------
+# CARGA DE CARTERA
+# ------------------------------------------------------
+st.markdown("### 📤 Subir cartera del estudio")
 
-    # ======================================================
-    # BLOQUE 2 · CARGA DE CARTERA
-    # ======================================================
-    st.markdown("### 📤 Paso 2 · Subir cartera del estudio")
+archivo = st.file_uploader(
+    "Subí el Excel completo con tu cartera",
+    type=["xlsx"]
+)
 
-    archivo = st.file_uploader(
-        "Subí el Excel completo de la cartera",
-        type=["xlsx"]
-    )
+if archivo is not None:
+    cartera = pd.read_excel(archivo)
 
-    if archivo:
-        try:
-            df = pd.read_excel(archivo, dtype=str).fillna("")
-            st.success("✅ Cartera cargada correctamente")
-        except Exception as e:
-            st.error(f"❌ Error leyendo el Excel: {e}")
-            st.stop()
+    columnas_requeridas = {
+        "CUIT", "ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"
+    }
 
-        st.markdown("#### 👀 Vista previa")
-        st.dataframe(df.head(50), use_container_width=True)
+    if not columnas_requeridas.issubset(set(cartera.columns)):
+        st.error("❌ El archivo no tiene el formato esperado.")
+        st.stop()
 
-        # ======================================================
-        # BLOQUE 3 · NORMALIZACIÓN
-        # ======================================================
-        for col in df.columns:
-            df[col] = df[col].astype(str).str.strip().str.upper()
+    st.success(f"✅ Cartera cargada: {len(cartera)} CUITs")
 
-        # ======================================================
-        # BLOQUE 4 · GENERAR PLAN DE TRABAJO
-        # ======================================================
-        st.markdown("---")
-        st.markdown("### 📊 Paso 3 · Planificación automática")
+    # --------------------------------------------------
+    # NORMALIZACIÓN
+    # --------------------------------------------------
+    registros = []
 
-        plan = []
+    prioridades = {
+        "ARCA": 1,
+        "DGR_CORRIENTES": 2,
+        "ATP_CHACO": 3,
+        "TASA_MUNICIPAL": 4
+    }
 
-        for _, r in df.iterrows():
-            cuit = r.get("CUIT", "")
-            razon = r.get("RAZON_SOCIAL", "")
-
-            # ORDEN DE PRIORIDAD (regla del estudio)
-            if r.get("ARCA") == "SI":
-                plan.append({
-                    "CUIT": cuit,
-                    "Cliente": razon,
-                    "Organismo": "ARCA",
-                    "Prioridad": 1,
-                    "Acción sugerida": "Presentar IVA / Libros / DDJJ"
+    for _, row in cartera.iterrows():
+        for org, prioridad in prioridades.items():
+            if str(row[org]).strip().upper() == "SI":
+                registros.append({
+                    "CUIT": row["CUIT"],
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL", ""),
+                    "ORGANISMO": org,
+                    "PRIORIDAD": prioridad
                 })
 
-            if r.get("DGR_IIBB") == "SI":
-                plan.append({
-                    "CUIT": cuit,
-                    "Cliente": razon,
-                    "Organismo": "DGR Corrientes · IIBB",
-                    "Prioridad": 2,
-                    "Acción sugerida": "Liquidar Ingresos Brutos"
-                })
+    planificacion = pd.DataFrame(registros)
 
-            if r.get("ATP_IIBB") == "SI":
-                plan.append({
-                    "CUIT": cuit,
-                    "Cliente": razon,
-                    "Organismo": "ATP Chaco · IIBB",
-                    "Prioridad": 3,
-                    "Acción sugerida": "Liquidar Ingresos Brutos"
-                })
+    # --------------------------------------------------
+    # TABLERO DE PLANIFICACIÓN
+    # --------------------------------------------------
+    st.markdown("### 🧠 Planificación sugerida del mes")
 
-            if r.get("TASA_MUNICIPAL") == "SI":
-                plan.append({
-                    "CUIT": cuit,
-                    "Cliente": razon,
-                    "Organismo": "Tasa Municipal",
-                    "Prioridad": 4,
-                    "Acción sugerida": "Verificar / Presentar tasa"
-                })
-
-        if not plan:
-            st.warning("⚠️ No se detectaron responsabilidades en la cartera.")
-            st.stop()
-
-        df_plan = pd.DataFrame(plan).sort_values(
-            by=["Prioridad", "Cliente"]
+    resumen = (
+        planificacion
+        .groupby(["PRIORIDAD", "ORGANISMO"])
+        .agg(
+            CUITS=("CUIT", "nunique")
         )
+        .reset_index()
+        .sort_values("PRIORIDAD")
+    )
 
-        # ======================================================
-        # BLOQUE 5 · RESULTADO FINAL
-        # ======================================================
-        st.markdown("### ✅ Plan de trabajo sugerido")
+    col1, col2, col3 = st.columns(3)
 
+    col1.metric("Total CUITs", planificacion["CUIT"].nunique())
+    col2.metric("Obligaciones", len(planificacion))
+    col3.metric("Organismos", planificacion["ORGANISMO"].nunique())
+
+    st.markdown("#### 🔢 Orden de trabajo recomendado")
+
+    st.dataframe(
+        resumen,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # --------------------------------------------------
+    # DETALLE OPERATIVO (OPCIONAL)
+    # --------------------------------------------------
+    with st.expander("📋 Ver detalle operativo por CUIT"):
         st.dataframe(
-            df_plan.drop(columns="Prioridad"),
-            use_container_width=True
+            planificacion.sort_values(["PRIORIDAD", "CUIT"]),
+            use_container_width=True,
+            hide_index=True
         )
 
-        st.download_button(
-            "📥 Descargar planificación (Excel)",
-            data=excel_bytes(df_plan),
-            file_name="planificacion_fiscal_cartera.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-        # ======================================================
-        # BLOQUE 6 · AVISO LEGAL
-        # ======================================================
-        st.markdown("---")
-        st.warning(
-            "🔐 **Confidencialidad y seguridad**\n\n"
-            "Las claves fiscales y datos de los clientes **no se almacenan**.\n"
-            "La información se utiliza **exclusivamente para el procesamiento solicitado**."
-        )
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
