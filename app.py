@@ -137,7 +137,7 @@ if seccion == "📅 Gestión Fiscal":
     )
 
     # ======================================================
-    # VENCIMIENTOS GENERALES (SIEMPRE DISPONIBLES)
+    # VENCIMIENTOS GENERALES (SIEMPRE VISIBLES)
     # ======================================================
 
     df_venc = cargar_vencimientos()
@@ -152,63 +152,61 @@ if seccion == "📅 Gestión Fiscal":
         )
 
     # ======================================================
-    # SI NO HAY CARTERA, NO SE HACE PLANIFICACIÓN
+    # SI NO HAY ARCHIVO → SOLO CALENDARIO
     # ======================================================
 
     if archivo is None:
+
         st.info(
             "📌 Podés consultar los vencimientos generales arriba.\n\n"
-            "Para generar la planificación por cliente:\n"
+            "Para generar vencimientos por cliente:\n"
             "1️⃣ Descargá el modelo de cartera\n"
-            "2️⃣ Marcá con SI los organismos aplicables\n"
+            "2️⃣ Indicá con SI los organismos por CUIT\n"
             "3️⃣ Subí el Excel"
         )
-        return  # 👈 clave: NO usar st.stop()
 
     # ======================================================
-    # CARGA Y NORMALIZACIÓN DE CARTERA
+    # SI HAY ARCHIVO → VENCIMIENTOS POR CLIENTE
     # ======================================================
 
-    df_cartera = pd.read_excel(archivo)
-    df_cartera.columns = df_cartera.columns.str.upper().str.strip()
+    else:
 
-    for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
-        if col in df_cartera.columns:
-            df_cartera[col] = (
-                df_cartera[col]
-                .astype(str)
-                .str.upper()
-                .str.strip()
-            )
+        df_cartera = pd.read_excel(archivo)
+        df_cartera.columns = df_cartera.columns.str.upper().str.strip()
 
-    # ======================================================
-    # ARMADO SIMPLE: LISTA DE VENCIMIENTOS POR CLIENTE
-    # (sin priorización todavía)
-    # ======================================================
+        for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+            if col in df_cartera.columns:
+                df_cartera[col] = (
+                    df_cartera[col]
+                    .astype(str)
+                    .str.upper()
+                    .str.strip()
+                )
 
-    registros = []
+        registros = []
 
-    for _, row in df_cartera.iterrows():
-        for _, v in df_venc.iterrows():
-            registros.append({
-                "CUIT": row["CUIT"],
-                "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                "ORGANISMO": v["organismo"],
-                "IMPUESTO": v["impuesto"],
-                "FECHA": v["fecha"],
-                "DIAS": v["dias_restantes"],
-                "ESTADO": v["estado"]
-            })
+        for _, row in df_cartera.iterrows():
+            for _, v in df_venc.iterrows():
+                registros.append({
+                    "CUIT": row["CUIT"],
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
+                    "ORGANISMO": v["organismo"],
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "ESTADO": v["estado"]
+                })
 
-    df_clientes = pd.DataFrame(registros)
+        df_clientes = pd.DataFrame(registros)
 
-    st.markdown("### 📋 Vencimientos por cliente (ordenados por fecha)")
+        st.markdown("### 📋 Vencimientos por cliente (ordenados por fecha)")
 
-    st.dataframe(
-        df_clientes.sort_values("FECHA"),
-        use_container_width=True,
-        hide_index=True
-    )
+        st.dataframe(
+            df_clientes.sort_values("FECHA"),
+            use_container_width=True,
+            hide_index=True
+        )
+
 
 
 # ======================================================
