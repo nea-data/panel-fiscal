@@ -100,9 +100,9 @@ def normalizar_col(c: str) -> str:
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
 
-if seccion == "📊 Gestión Fiscal":
+if seccion == "📅 Gestión Fiscal":
 
-    st.markdown("## 📊 Gestión fiscal por cartera")
+    st.markdown("## 📅 Gestión fiscal por cartera")
     st.markdown(
         "Listado automático de vencimientos según la cartera de clientes cargada. "
         "Las fechas se obtienen directamente del calendario fiscal."
