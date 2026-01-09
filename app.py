@@ -100,7 +100,7 @@ def normalizar_col(c: str) -> str:
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
 
-if seccion == "📊 Gestión Fiscal":
+if seccion == "📅 Gestión Fiscal":
 
     # --------------------------------------------------
     # ENCABEZADO CON MES / AÑO
