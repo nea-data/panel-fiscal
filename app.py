@@ -230,7 +230,7 @@ if seccion == "📅 Gestión Fiscal":
         "ARCA": df_venc[df_venc["organismo"] == "ARCA"],
         "DGR Corrientes · IIBB": df_venc[df_venc["organismo"] == "DGR"],
         "ATP Chaco · IIBB": df_venc[df_venc["organismo"] == "ATP(CHACO)"],
-        "TASA MUNICIPAL": df_venc[df_venc["organismo"] == "TS"],
+        "Tasa Municipal": df_venc[df_venc["organismo"] == "TS"],
     }
 
     for nombre, df_org in ORGANISMOS_CAL.items():
