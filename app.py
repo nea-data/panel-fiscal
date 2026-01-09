@@ -97,160 +97,151 @@ def normalizar_col(c: str) -> str:
     return str(c).strip().upper()
 
 # ======================================================
-# SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
+# SECCIÓN 1 · GESTIÓN FISCAL
 # ======================================================
 
-st.markdown("## 📅 Gestión fiscal por cartera")
-st.markdown(
-    "Listado automático de vencimientos según la cartera cargada. "
-    "Las fechas se obtienen directamente del calendario fiscal."
-)
-st.markdown("---")
+if seccion == "📅 Gestión Fiscal":
 
-# ======================================================
-# MODELO EXCEL DE CARTERA
-# ======================================================
+    st.markdown("## 📅 Gestión fiscal por cartera")
+    st.markdown(
+        "Listado automático de vencimientos del mes corriente. "
+        "Las fechas se obtienen directamente del calendario fiscal oficial."
+    )
+    st.markdown("---")
 
-def generar_modelo_cartera():
-    df = pd.DataFrame({
-        "CUIT": [],
-        "RAZON_SOCIAL": [],
-        "ARCA": [],
-        "DGR_CORRIENTES": [],
-        "ATP_CHACO": [],
-        "TASA_MUNICIPAL": []
-    })
-    return excel_bytes(df)
+    # ======================================================
+    # MODELO DE CARTERA
+    # ======================================================
+    def generar_modelo_cartera():
+        df = pd.DataFrame({
+            "CUIT": [],
+            "RAZON_SOCIAL": [],
+            "ARCA": [],
+            "DGR_CORRIENTES": [],
+            "ATP_CHACO": [],
+            "TASA_MUNICIPAL": []
+        })
+        return excel_bytes(df)
 
-st.download_button(
-    "⬇️ Descargar modelo de cartera (Excel)",
-    generar_modelo_cartera(),
-    file_name="modelo_cartera_fiscal.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+    st.download_button(
+        "⬇️ Descargar modelo de cartera (Excel)",
+        generar_modelo_cartera(),
+        file_name="modelo_cartera_fiscal.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-archivo = st.file_uploader(
-    "📤 Subí el Excel de cartera",
-    type=["xlsx"]
-)
+    archivo = st.file_uploader(
+        "📤 Subí el Excel de cartera",
+        type=["xlsx"]
+    )
 
-st.info(
-    "💡 Podés subir tu cartera para ver los vencimientos por cliente. "
-    "Si no la subís, abajo podés consultar el calendario fiscal completo."
-)
+    st.info(
+        "💡 Podés subir tu cartera para ver los vencimientos por cliente. "
+        "Si no subís ningún archivo, abajo podés consultar el calendario fiscal completo."
+    )
 
-# ======================================================
-# CARGA DE VENCIMIENTOS (BASE REAL)
-# ======================================================
+    # ======================================================
+    # CARGA DE VENCIMIENTOS (BASE OFICIAL)
+    # ======================================================
+    df_venc = cargar_vencimientos()
 
-df_venc = cargar_vencimientos()
+    # ======================================================
+    # CRUCE CARTERA ↔ VENCIMIENTOS (OPCIONAL)
+    # ======================================================
+    if archivo is not None:
 
-hoy = date.today()
-df_venc["fecha"] = pd.to_datetime(
-    dict(year=hoy.year, month=df_venc["mes"], day=df_venc["dia"]),
-    errors="coerce"
-)
+        df_cartera = pd.read_excel(archivo)
+        df_cartera.columns = df_cartera.columns.str.upper().str.strip()
 
-# ======================================================
-# SI HAY CARTERA → CRUCE POR CLIENTE
-# ======================================================
+        for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
+            if col in df_cartera.columns:
+                df_cartera[col] = (
+                    df_cartera[col]
+                    .astype(str)
+                    .str.upper()
+                    .str.strip()
+                )
 
-if archivo is not None:
+        registros = []
 
-    df_cartera = pd.read_excel(archivo)
-    df_cartera.columns = df_cartera.columns.str.upper().str.strip()
+        for _, row in df_cartera.iterrows():
 
-    for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
-        if col in df_cartera.columns:
-            df_cartera[col] = (
-                df_cartera[col]
-                .astype(str)
-                .str.upper()
-                .str.strip()
+            if row.get("ARCA") == "SI":
+                df_org = df_venc[df_venc["organismo"] == "ARCA"]
+
+            elif row.get("DGR_CORRIENTES") == "SI":
+                df_org = df_venc[df_venc["organismo"] == "DGR"]
+
+            elif row.get("ATP_CHACO") == "SI":
+                df_org = df_venc[df_venc["organismo"] == "ATP(CHACO)"]
+
+            elif row.get("TASA_MUNICIPAL") == "SI":
+                df_org = df_venc[df_venc["impuesto"] == "TS"]
+
+            else:
+                continue
+
+            for _, v in df_org.iterrows():
+                registros.append({
+                    "CUIT": row["CUIT"],
+                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
+                    "ORGANISMO": v["organismo"],
+                    "IMPUESTO": v["impuesto"],
+                    "TERMINACION": v["terminacion"],
+                    "FECHA": v["fecha"]
+                })
+
+        df_clientes = pd.DataFrame(registros)
+
+        if not df_clientes.empty:
+            st.markdown("### 🧾 Vencimientos por cliente")
+            st.dataframe(
+                df_clientes.sort_values("FECHA"),
+                use_container_width=True,
+                hide_index=True
             )
 
-    registros = []
+    # ======================================================
+    # CALENDARIO FISCAL DEL MES (SIEMPRE VISIBLE)
+    # ======================================================
+    st.markdown("---")
+    st.markdown("## 📆 Calendario fiscal del mes")
 
-    for _, row in df_cartera.iterrows():
-
-        if row.get("ARCA") == "SI":
-            df_org = df_venc[df_venc["organismo"] == "ARCA"]
-
-        if row.get("DGR_CORRIENTES") == "SI":
-            df_org = df_venc[df_venc["organismo"] == "DGR"]
-
-        if row.get("ATP_CHACO") == "SI":
-            df_org = df_venc[df_venc["organismo"] == "ATP(CHACO)"]
-
-        if row.get("TASA_MUNICIPAL") == "SI":
-            df_org = df_venc[df_venc["impuesto"] == "TS"]
-
-        for _, v in df_org.iterrows():
-            registros.append({
-                "CUIT": row["CUIT"],
-                "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                "ORGANISMO": v["organismo"],
-                "IMPUESTO": v["impuesto"],
-                "TERMINACION": v["terminacion"],
-                "FECHA": v["fecha"]
-            })
-
-    df_clientes = pd.DataFrame(registros)
-
-    if not df_clientes.empty:
-        st.markdown("### 🧾 Vencimientos por cliente")
+    with st.expander("📂 ARCA · IVA"):
         st.dataframe(
-            df_clientes.sort_values("FECHA"),
+            df_venc[df_venc["organismo"] == "ARCA"][
+                ["terminacion", "impuesto", "fecha"]
+            ].sort_values("fecha"),
             use_container_width=True,
             hide_index=True
         )
 
-# ======================================================
-# CALENDARIO FISCAL DEL MES (SIEMPRE VISIBLE)
-# ======================================================
+    with st.expander("📂 DGR Corrientes · IIBB"):
+        st.dataframe(
+            df_venc[df_venc["organismo"] == "DGR"][
+                ["terminacion", "impuesto", "fecha"]
+            ].sort_values("fecha"),
+            use_container_width=True,
+            hide_index=True
+        )
 
-st.markdown("---")
-st.markdown("## 📆 Calendario fiscal del mes")
+    with st.expander("📂 ATP Chaco · IIBB"):
+        st.dataframe(
+            df_venc[df_venc["organismo"] == "ATP(CHACO)"][
+                ["terminacion", "impuesto", "fecha"]
+            ].sort_values("fecha"),
+            use_container_width=True,
+            hide_index=True
+        )
 
-# ---------- ARCA ----------
-with st.expander("📂 ARCA · IVA"):
-    st.dataframe(
-        df_venc[df_venc["organismo"] == "ARCA"][
-            ["terminacion", "impuesto", "fecha"]
-        ].sort_values("fecha"),
-        use_container_width=True,
-        hide_index=True
-    )
-
-# ---------- DGR ----------
-with st.expander("📂 DGR Corrientes · IIBB"):
-    st.dataframe(
-        df_venc[df_venc["organismo"] == "DGR"][
-            ["terminacion", "impuesto", "fecha"]
-        ].sort_values("fecha"),
-        use_container_width=True,
-        hide_index=True
-    )
-
-# ---------- ATP ----------
-with st.expander("📂 ATP Chaco · IIBB"):
-    st.dataframe(
-        df_venc[df_venc["organismo"] == "ATP(CHACO)"][
-            ["terminacion", "impuesto", "fecha"]
-        ].sort_values("fecha"),
-        use_container_width=True,
-        hide_index=True
-    )
-
-# ---------- TASA MUNICIPAL ----------
-with st.expander("📂 Tasas Municipales"):
-    st.dataframe(
-        df_venc[df_venc["impuesto"] == "TS"][
-            ["terminacion", "organismo", "fecha"]
-        ].sort_values("fecha"),
-        use_container_width=True,
-        hide_index=True
-    )
+    with st.expander("📂 Tasas Municipales"):
+        st.dataframe(
+            df_venc[df_venc["impuesto"] == "TS"][
+                ["terminacion", "organismo", "fecha"]
+            ].sort_values("fecha"),
+            use_container_width=True,
+            hide_index=True
+        )
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
