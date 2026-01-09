@@ -100,12 +100,12 @@ def normalizar_col(c: str) -> str:
 # SECCIÓN 1 · GESTIÓN FISCAL POR CARTERA
 # ======================================================
 
-if seccion == "📅 Gestión Fiscal":
+if seccion == "📊 Gestión Fiscal":
 
-    st.markdown("## 📊 Planificación fiscal por cartera")
+    st.markdown("## 📊 Gestión fiscal por cartera")
     st.markdown(
-        "Vista ejecutiva para organizar el trabajo diario del estudio "
-        "combinando cartera de clientes y vencimientos reales."
+        "Listado automático de vencimientos según la cartera de clientes cargada. "
+        "Las fechas se obtienen directamente del calendario fiscal."
     )
     st.markdown("---")
 
@@ -132,154 +132,139 @@ if seccion == "📅 Gestión Fiscal":
     )
 
     archivo = st.file_uploader(
-        "📤 Subí tu cartera completa",
+        "📤 Subí el Excel de cartera",
         type=["xlsx"]
     )
 
     if not archivo:
         st.info(
-            "📂 Para comenzar:\n"
+            "📂 Pasos:\n"
             "1️⃣ Descargá el modelo de cartera\n"
-            "2️⃣ Completá los CUITs y organismos (SI / NO)\n"
-            "3️⃣ Subí el Excel para generar la planificación automática"
+            "2️⃣ Indicá con SI los organismos aplicables por CUIT\n"
+            "3️⃣ Subí el archivo para ver los vencimientos"
         )
         st.stop()
 
     # ======================================================
-    # CARGA Y NORMALIZACIÓN DE CARTERA
+    # CARGA DE CARTERA
     # ======================================================
 
-    df_cartera = pd.read_excel(archivo)
+    df_cartera = pd.read_excel(archivo, dtype=str)
     df_cartera.columns = df_cartera.columns.str.upper().str.strip()
 
     for col in ["ARCA", "DGR_CORRIENTES", "ATP_CHACO", "TASA_MUNICIPAL"]:
         if col in df_cartera.columns:
-            df_cartera[col] = (
-                df_cartera[col]
-                .astype(str)
-                .str.upper()
-                .str.strip()
-            )
+            df_cartera[col] = df_cartera[col].fillna("").str.upper().str.strip()
 
     # ======================================================
-    # VENCIMIENTOS BASE (CORE)
+    # VENCIMIENTOS BASE (EXCEL FISCAL)
     # ======================================================
 
     df_venc = cargar_vencimientos()
 
-    # Normalización defensiva (CLAVE)
-    df_venc.columns = df_venc.columns.str.lower().str.strip()
-    df_venc["organismo"] = df_venc["organismo"].astype(str).str.upper().str.strip()
-    df_venc["impuesto"] = df_venc["impuesto"].astype(str).str.upper().str.strip()
-    df_venc["terminacion"] = df_venc["terminacion"].astype(str).str.strip()
+    hoy = date.today()
+    df_venc["fecha"] = pd.to_datetime(
+        dict(year=hoy.year, month=df_venc["mes"], day=df_venc["dia"]),
+        errors="coerce"
+    )
+    df_venc["dias_restantes"] = (df_venc["fecha"] - pd.Timestamp(hoy)).dt.days
 
     # ======================================================
-    # ARMADO OPERATIVO POR CUIT
+    # ARMADO DE VENCIMIENTOS POR CARTERA
     # ======================================================
-
-    PRIORIDAD_BASE = {
-        "ARCA": 1,
-        "DGR_CORRIENTES": 2,
-        "ATP_CHACO": 2,
-        "TASA_MUNICIPAL": 3
-    }
 
     registros = []
 
-    for _, row in df_cartera.iterrows():
-        for org, prioridad_base in PRIORIDAD_BASE.items():
+    for _, cli in df_cartera.iterrows():
 
-            if row.get(org) != "SI":
-                continue
+        cuit = cli["CUIT"]
+        razon = cli.get("RAZON_SOCIAL", "")
 
-            # Match correcto con vencimientos reales
-            if org == "ARCA":
-                df_org = df_venc[df_venc["organismo"] == "ARCA"]
-            elif org == "DGR_CORRIENTES":
-                df_org = df_venc[df_venc["organismo"] == "DGR"]
-            elif org == "ATP_CHACO":
-                df_org = df_venc[df_venc["organismo"] == "ATP(CHACO)"]
-            elif org == "TASA_MUNICIPAL":
-                df_org = df_venc[df_venc["impuesto"] == "TS"]
-            else:
-                continue
-
-            for _, v in df_org.iterrows():
-
-                # Ajuste por urgencia real
-                if v["dias_restantes"] <= 2:
-                    ajuste = -2
-                elif v["dias_restantes"] <= 5:
-                    ajuste = -1
-                else:
-                    ajuste = 0
-
-                prioridad_final = prioridad_base + ajuste
-
+        # ARCA
+        if cli.get("ARCA") == "SI":
+            for _, v in df_venc[df_venc["organismo"] == "ARCA"].iterrows():
                 registros.append({
-                    "CUIT": row["CUIT"],
-                    "RAZON_SOCIAL": row.get("RAZON_SOCIAL"),
-                    "ORGANISMO": org,
+                    "CUIT": cuit,
+                    "RAZON_SOCIAL": razon,
+                    "ORGANISMO": "ARCA",
                     "IMPUESTO": v["impuesto"],
                     "FECHA": v["fecha"],
                     "DIAS": v["dias_restantes"],
-                    "PRIORIDAD": prioridad_final
+                    "ESTADO": v["estado"]
                 })
 
-    df_plan = pd.DataFrame(registros)
+        # DGR
+        if cli.get("DGR_CORRIENTES") == "SI":
+            for _, v in df_venc[df_venc["organismo"] == "DGR"].iterrows():
+                registros.append({
+                    "CUIT": cuit,
+                    "RAZON_SOCIAL": razon,
+                    "ORGANISMO": "DGR Corrientes",
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "ESTADO": v["estado"]
+                })
+
+        # ATP
+        if cli.get("ATP_CHACO") == "SI":
+            for _, v in df_venc[df_venc["organismo"] == "ATP(CHACO)"].iterrows():
+                registros.append({
+                    "CUIT": cuit,
+                    "RAZON_SOCIAL": razon,
+                    "ORGANISMO": "ATP Chaco",
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "ESTADO": v["estado"]
+                })
+
+        # TASA
+        if cli.get("TASA_MUNICIPAL") == "SI":
+            for _, v in df_venc[df_venc["impuesto"] == "TS"].iterrows():
+                registros.append({
+                    "CUIT": cuit,
+                    "RAZON_SOCIAL": razon,
+                    "ORGANISMO": "Tasa Municipal",
+                    "IMPUESTO": v["impuesto"],
+                    "FECHA": v["fecha"],
+                    "DIAS": v["dias_restantes"],
+                    "ESTADO": v["estado"]
+                })
+
+    df_out = pd.DataFrame(registros)
 
     # ======================================================
-    # VISTA EJECUTIVA – ORDEN DE TRABAJO
+    # VISTA PRINCIPAL
     # ======================================================
 
-    st.markdown("### 🔥 Orden de trabajo sugerido")
+    st.markdown("### 📅 Vencimientos de la cartera (ordenados por fecha)")
 
-    if df_plan.empty:
-        st.warning("No se generaron tareas con la cartera cargada.")
+    if df_out.empty:
+        st.warning("No se encontraron vencimientos para la cartera cargada.")
         st.stop()
 
-    df_plan = df_plan.sort_values(
-        ["PRIORIDAD", "DIAS"],
-        ascending=[True, True]
-    )
+    df_out = df_out.sort_values("FECHA")
 
     st.dataframe(
-        df_plan[
-            ["CUIT", "RAZON_SOCIAL", "ORGANISMO", "IMPUESTO", "FECHA", "DIAS", "PRIORIDAD"]
+        df_out[
+            ["CUIT", "RAZON_SOCIAL", "ORGANISMO", "IMPUESTO", "FECHA", "DIAS", "ESTADO"]
         ],
         use_container_width=True,
         hide_index=True
     )
 
     # ======================================================
-    # RESUMEN EJECUTIVO
+    # DETALLE POR ORGANISMO
     # ======================================================
 
-    st.markdown("### 📌 Resumen operativo por organismo")
-
-    resumen = (
-        df_plan.groupby("ORGANISMO")
-        .agg(
-            Casos=("CUIT", "count"),
-            Urgentes=("DIAS", lambda x: (x <= 2).sum())
-        )
-        .reset_index()
-    )
-
-    st.dataframe(resumen, hide_index=True, use_container_width=True)
-
-    # ======================================================
-    # DESPLEGABLE FINAL – TODOS LOS VENCIMIENTOS
-    # ======================================================
-
-    with st.expander("📅 Ver todos los vencimientos del mes"):
+    with st.expander("📂 Ver vencimientos por organismo y terminación"):
         st.dataframe(
-            df_venc.sort_values("fecha")[
-                ["organismo", "impuesto", "terminacion", "fecha"]
-            ],
+            df_out.sort_values(["ORGANISMO", "FECHA"]),
             use_container_width=True,
             hide_index=True
         )
+
 
 # ======================================================
 # SECCIÓN 2 · CONSULTOR DE CUITs
