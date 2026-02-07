@@ -360,7 +360,10 @@ elif seccion == "🏦 Extractos Bancarios":
                 pdf_bytes = pdf_file.read()
 
                 # Llamada al servicio principal
-                result = extract_bank_statement(pdf_bytes)
+                result = extract_bank_statement(
+                    pdf_bytes= pdf_bytes,
+                    filename=archivo.name,
+                )
 
             # -----------------------------
             # RESULTADOS
