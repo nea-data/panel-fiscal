@@ -1,7 +1,8 @@
 # core/validation.py
 
 from typing import List, Tuple
-from core.models import Transaction, WarningItem
+from .models import Transaction, WarningItem
+
 
 
 def detect_saldo_inicial(transactions: List[Transaction]) -> int:
@@ -111,3 +112,4 @@ def validate_balance_consistency(
     score = int((ok / total) * 100) if total > 0 else 100
 
     return warnings, score
+
