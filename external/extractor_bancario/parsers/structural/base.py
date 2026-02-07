@@ -2,7 +2,13 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, List
-from core.models import DocumentProfile, Transaction, StatementMeta, WarningItem
+from ...core.models import (
+    DocumentProfile,
+    Transaction,
+    StatementMeta,
+    WarningItem,
+)
+
 
 
 class BaseStructuralParser(ABC):
@@ -55,3 +61,4 @@ class BaseStructuralParser(ABC):
         No rompe, solo genera warnings.
         """
         pass
+
