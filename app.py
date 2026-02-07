@@ -352,12 +352,16 @@ elif seccion == "🏦 Extractos Bancarios":
     if pdf_file is not None:
 
         try:
-            from external.extractor_bancario.service import extract_bank_pdf
+            # ✅ IMPORT CORRECTO DEL SERVICIO
+            from external.extractor_bancario.service import extract_bank_statement
 
             with st.spinner("Procesando extracto bancario..."):
+
+                # Leer bytes del PDF
                 pdf_bytes = pdf_file.read()
 
-                result = extract_bank_pdf(
+                # ✅ Llamada correcta al servicio
+                result = extract_bank_statement(
                     pdf_bytes=pdf_bytes,
                     filename=pdf_file.name,
                 )
@@ -409,6 +413,7 @@ elif seccion == "🏦 Extractos Bancarios":
         except Exception as e:
             st.error("❌ Error procesando el extracto bancario.")
             st.exception(e)
+
 
 # ======================================================
 # SECCIÓN 4 · EMITIDOS / RECIBIDOS
