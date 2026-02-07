@@ -35,6 +35,7 @@ st.sidebar.markdown("---")
 MENU = [
     "📅 Gestión Fiscal",
     "🔎 Consultor de CUITs",
+    "🏦 Extractos Bancarios",
     "📤 Emitidos / Recibidos"
 ]
 
@@ -324,8 +325,95 @@ elif seccion == "🔎 Consultor de CUITs":
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
 
+
 # ======================================================
-# SECCIÓN 3 · EMITIDOS / RECIBIDOS
+# SECCIÓN 3 · EXTRACTOS BANCARIOS
+# ======================================================
+elif seccion == "🏦 Extractos Bancarios":
+
+    st.markdown("## 🏦 Extractor de extractos bancarios")
+    st.markdown(
+        "<div class='subtitulo'>Detección automática de banco y generación de Excel</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("---")
+
+    st.info(
+        "📄 Subí un **extracto bancario en PDF**.\n\n"
+        "🔍 El sistema detecta automáticamente el banco.\n"
+        "📊 Se genera un Excel con los movimientos normalizados."
+    )
+
+    pdf_file = st.file_uploader(
+        "📎 Subí el extracto bancario (PDF)",
+        type=["pdf"]
+    )
+
+    if pdf_file is not None:
+
+        try:
+            from external.extractor_bancario.service import extract_bank_statement
+
+            with st.spinner("Procesando extracto bancario..."):
+
+                # Leemos bytes del PDF
+                pdf_bytes = pdf_file.read()
+
+                # Llamada al servicio principal
+                result = extract_bank_statement(pdf_bytes)
+
+            # -----------------------------
+            # RESULTADOS
+            # -----------------------------
+            st.success(f"🏦 Banco detectado: **{result.profile.bank_code.upper()}**")
+            st.info(f"📄 Tipo de documento: {result.profile.document_type}")
+
+            if result.transactions:
+                df_tx = pd.DataFrame(result.transactions)
+
+                st.markdown("### 📋 Movimientos detectados")
+                st.dataframe(
+                    df_tx,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                # Descargar Excel
+                st.download_button(
+                    "⬇️ Descargar extracto en Excel",
+                    data=excel_bytes(df_tx),
+                    file_name="extracto_bancario.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                st.warning("⚠️ No se detectaron movimientos en el documento.")
+
+            # -----------------------------
+            # WARNINGS
+            # -----------------------------
+            if result.warnings:
+                st.markdown("### ⚠️ Advertencias")
+                for w in result.warnings:
+                    st.warning(f"{w.code} · {w.message}")
+
+            # -----------------------------
+            # TRAZA DEL PARSER
+            # -----------------------------
+            with st.expander("🧠 Detalle técnico del procesamiento"):
+                st.write("Parser trace:")
+                for t in result.parser_trace:
+                    st.code(t)
+
+                st.write("Confidence score:", result.confidence_score)
+
+        except Exception as e:
+            st.error("❌ Error procesando el extracto bancario.")
+            st.exception(e)
+
+
+
+# ======================================================
+# SECCIÓN 4 · EMITIDOS / RECIBIDOS
 # ======================================================
 elif seccion == "📤 Emitidos / Recibidos":
 
