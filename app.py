@@ -352,23 +352,25 @@ elif seccion == "🏦 Extractos Bancarios":
     if pdf_file is not None:
 
         try:
-            from external.extractor_bancario.service import extract_bank_statement
+            # 👇 IMPORT CORRECTO
+            from external.extractor_bancario.service import extract_bank_pdf
 
             with st.spinner("Procesando extracto bancario..."):
 
-                # Leemos bytes del PDF
                 pdf_bytes = pdf_file.read()
 
-                # Llamada al servicio principal
-                result = extract_bank_statement(
-                    pdf_bytes= pdf_bytes,
-                    filename=uploaded_file.name,
+                # 👇 LLAMADA CORRECTA
+                result = extract_bank_pdf(
+                    pdf_bytes=pdf_bytes,
+                    filename=pdf_file.name,
                 )
 
             # -----------------------------
             # RESULTADOS
             # -----------------------------
-            st.success(f"🏦 Banco detectado: **{result.profile.bank_code.upper()}**")
+            st.success(
+                f"🏦 Banco detectado: **{result.profile.detected_bank.upper()}**"
+            )
             st.info(f"📄 Tipo de documento: {result.profile.document_type}")
 
             if result.transactions:
@@ -381,7 +383,6 @@ elif seccion == "🏦 Extractos Bancarios":
                     hide_index=True
                 )
 
-                # Descargar Excel
                 st.download_button(
                     "⬇️ Descargar extracto en Excel",
                     data=excel_bytes(df_tx),
@@ -403,7 +404,6 @@ elif seccion == "🏦 Extractos Bancarios":
             # TRAZA DEL PARSER
             # -----------------------------
             with st.expander("🧠 Detalle técnico del procesamiento"):
-                st.write("Parser trace:")
                 for t in result.parser_trace:
                     st.code(t)
 
@@ -412,6 +412,7 @@ elif seccion == "🏦 Extractos Bancarios":
         except Exception as e:
             st.error("❌ Error procesando el extracto bancario.")
             st.exception(e)
+)
 
 
 
