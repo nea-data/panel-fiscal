@@ -362,7 +362,7 @@ elif seccion == "🏦 Extractos Bancarios":
                 # Llamada al servicio principal
                 result = extract_bank_statement(
                     pdf_bytes= pdf_bytes,
-                    filename=archivo.name,
+                    filename=uploaded_file.name,
                 )
 
             # -----------------------------
