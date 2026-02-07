@@ -13,6 +13,8 @@ st.set_page_config(
     layout="wide"
 )
 
+
+
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
 # ======================================================
@@ -38,6 +40,11 @@ MENU = [
     "🏦 Extractos Bancarios",
     "📤 Emitidos / Recibidos"
 ]
+
+
+if is_admin_email and st.session_state.admin_ok:
+    MENU.append("🛠 Administración")
+
 
 seccion = st.sidebar.radio(
     "Menú",
