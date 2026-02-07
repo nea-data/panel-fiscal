@@ -5,8 +5,8 @@ from datetime import datetime
 
 import pdfplumber
 
-from parsers.structural.base import BaseStructuralParser
-from core.models import Transaction, StatementMeta, WarningItem
+from ...structural.base import BaseStructuralParser
+from ....core.models import Transaction, StatementMeta, WarningItem
 
 
 class ResumenBancoCorrientesParser(BaseStructuralParser):
@@ -160,4 +160,5 @@ class ResumenBancoCorrientesParser(BaseStructuralParser):
                     severity="HIGH", 
                     message=f"Discrepancia contable. Esperado: {meta.closing_balance}, Calculado: {transactions[-1].balance}"
                 ))
+
         return warnings
