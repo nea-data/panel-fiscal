@@ -15,14 +15,17 @@ from typing import Optional
 # IMPORTS INTERNOS
 # =========================
 
-from bank_detection.detector import BankDetector
+from external.extractor_bancario.bank_detection.detector import BankDetector
 
-from core.diagnostics import diagnose_pdf
-from core.router import ParserRouter
-from core.models import ExtractionResult
 
-# Parsers disponibles
-from parsers.banks.bcorrientes.resumen import ResumenBancoCorrientesParser
+from external.extractor_bancario.core.diagnostics import diagnose_pdf
+from external.extractor_bancario.core.router import ParserRouter
+from external.extractor_bancario.core.models import ExtractionResult
+
+from external.extractor_bancario.parsers.banks.bcorrientes.resumen import (
+    ResumenBancoCorrientesParser
+)
+
 
 
 # =========================
@@ -93,3 +96,4 @@ def extract_bank_pdf(
     result.profile.detected_bank = bank_code
 
     return result
+
