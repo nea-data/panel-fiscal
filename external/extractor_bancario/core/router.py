@@ -1,10 +1,10 @@
 from typing import List
 
-from core.models import ExtractionResult, WarningItem
-from core.validation import validate_balance_consistency
+from .models import ExtractionResult, WarningItem
+from .validation import validate_balance_consistency
 
-from parsers.structural.base import BaseStructuralParser
-from bank_detection.detector import BankDetector
+from ..parsers.structural.base import BaseStructuralParser
+from ..bank_detection.detector import BankDetector
 
 
 class ParserRouter:
@@ -129,3 +129,4 @@ class ParserRouter:
             confidence_score=0,
             parser_trace=trace,
         )
+
