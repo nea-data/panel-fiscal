@@ -6,7 +6,8 @@ from typing import Optional
 
 import pdfplumber
 
-from core.models import DocumentProfile
+from .models import DocumentProfile
+
 
 
 def diagnose_pdf(pdf_bytes: bytes, file_name: str) -> DocumentProfile:
@@ -67,3 +68,4 @@ def diagnose_pdf(pdf_bytes: bytes, file_name: str) -> DocumentProfile:
         profile.document_type = "MOVIMIENTOS"
 
     return profile
+
