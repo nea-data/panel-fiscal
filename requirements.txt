@@ -8,3 +8,6 @@ openpyxl
 xlsxwriter
 pytz
 pdfplumber
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
