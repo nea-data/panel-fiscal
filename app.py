@@ -5,6 +5,33 @@ from pathlib import Path
 from io import BytesIO
 
 # ======================================================
+# AUTH / USUARIO ACTUAL
+# ======================================================
+from auth.google_auth import get_current_user
+from auth.db import get_connection
+
+current_user = get_current_user()
+
+if not current_user:
+    st.stop()  # fuerza login Google
+
+# ======================================================
+# CONFIG ADMIN
+# ======================================================
+
+ADMIN_EMAILS = {
+    "neadata.contacto@gmail.com",
+}
+
+ADMIN_PASSWORD = "DATA2026"  # después mover a st.secrets
+
+is_admin_email = current_user.email in ADMIN_EMAILS
+
+if "admin_ok" not in st.session_state:
+    st.session_state.admin_ok = False
+
+
+# ======================================================
 # CONFIG STREAMLIT (SIEMPRE PRIMERO)
 # ======================================================
 st.set_page_config(
@@ -33,6 +60,26 @@ footer { visibility: hidden; }
 st.sidebar.markdown("## 📊 **NEA DATA**")
 st.sidebar.markdown("Soluciones en Ciencia de Datos y Automatización")
 st.sidebar.markdown("---")
+
+# ======================================================
+# ADMIN LOGIN
+# ======================================================
+
+if is_admin_email and not st.session_state.admin_ok:
+    st.sidebar.markdown("## 🔐 Acceso administrador")
+
+    admin_pass = st.sidebar.text_input(
+        "Contraseña admin",
+        type="password"
+    )
+
+    if st.sidebar.button("Desbloquear"):
+        if admin_pass == ADMIN_PASSWORD:
+            st.session_state.admin_ok = True
+            st.sidebar.success("Acceso concedido")
+        else:
+            st.sidebar.error("Contraseña incorrecta")
+
 
 MENU = [
     "📅 Gestión Fiscal",
@@ -546,6 +593,150 @@ y no se almacenan ni reutilizan.
             except Exception as e:
                 st.error("❌ Error al enviar el pedido.")
                 st.exception(e)
+
+
+# ======================================================
+# SECCIÓN ADMINISTRACIÓN
+# ======================================================
+elif seccion == "🛠 Administración" and is_admin_email and st.session_state.admin_ok:
+
+    st.markdown("## 🛠 Administración de usuarios")
+    st.markdown(
+        "<div class='subtitulo'>Gestión de suscripciones y accesos</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("---")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # --------------------------------------------------
+    # VER USUARIOS
+    # --------------------------------------------------
+    st.markdown("### 👥 Usuarios")
+
+    df_users = pd.read_sql("""
+        SELECT
+            u.id,
+            u.email,
+            p.name AS plan,
+            s.status,
+            s.source,
+            s.start_date,
+            s.end_date
+        FROM users u
+        JOIN subscriptions s ON s.user_id = u.id
+        JOIN plans p ON p.id = s.plan_id
+        ORDER BY u.id
+    """, conn)
+
+    st.dataframe(df_users, use_container_width=True)
+
+    st.markdown("---")
+
+    # --------------------------------------------------
+    # ALTA DE USUARIO
+    # --------------------------------------------------
+    st.markdown("### ➕ Alta de usuario")
+
+    plans = pd.read_sql("SELECT id, name FROM plans", conn)
+
+    with st.form("alta_usuario"):
+        email = st.text_input("📧 Email")
+        plan_id = st.selectbox(
+            "📦 Plan",
+            plans["id"],
+            format_func=lambda x: plans.loc[plans["id"] == x, "name"].values[0]
+        )
+        source = st.selectbox(
+            "🔖 Tipo",
+            ["demo", "paid", "manual"]
+        )
+        demo_days = st.number_input(
+            "⏳ Días demo (0 si no aplica)",
+            0, 60, 14
+        )
+
+        crear = st.form_submit_button("Crear usuario")
+
+    if crear:
+        if not email or "@" not in email:
+            st.error("Email inválido")
+        else:
+            cur.execute(
+                "INSERT OR IGNORE INTO users (email) VALUES (?)",
+                (email,)
+            )
+            conn.commit()
+
+            cur.execute(
+                "SELECT id FROM users WHERE email = ?",
+                (email,)
+            )
+            user_id = cur.fetchone()["id"]
+
+            if source == "demo" and demo_days > 0:
+                cur.execute("""
+                    INSERT INTO subscriptions (
+                        user_id, plan_id, status, source,
+                        start_date, end_date
+                    )
+                    VALUES (
+                        ?, ?, 'active', ?,
+                        DATE('now'),
+                        DATE('now', ? || ' day')
+                    )
+                """, (user_id, plan_id, source, demo_days))
+            else:
+                cur.execute("""
+                    INSERT INTO subscriptions (
+                        user_id, plan_id, status, source,
+                        start_date, end_date
+                    )
+                    VALUES (
+                        ?, ?, 'active', ?,
+                        DATE('now'), NULL
+                    )
+                """, (user_id, plan_id, source))
+
+            conn.commit()
+            st.success("Usuario creado")
+
+    st.markdown("---")
+
+    # --------------------------------------------------
+    # ACTIVAR / DESACTIVAR
+    # --------------------------------------------------
+    st.markdown("### 🔒 Gestión de suscripción")
+
+    user_sel = st.selectbox(
+        "Usuario",
+        df_users["id"],
+        format_func=lambda x: df_users.loc[df_users["id"] == x, "email"].values[0]
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🔓 Reactivar suscripción"):
+            cur.execute("""
+                UPDATE subscriptions
+                SET status = 'active'
+                WHERE user_id = ?
+            """, (user_sel,))
+            conn.commit()
+            st.success("Suscripción activada")
+
+    with col2:
+        if st.button("🔒 Desactivar suscripción"):
+            cur.execute("""
+                UPDATE subscriptions
+                SET status = 'inactive'
+                WHERE user_id = ?
+            """, (user_sel,))
+            conn.commit()
+            st.warning("Suscripción desactivada")
+
 
 
 
