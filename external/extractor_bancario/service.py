@@ -1,7 +1,7 @@
 """
 Servicio principal de extracción bancaria.
 
-Este módulo es el único punto de entrada que debe usar el Panel Fiscal.
+Este módulo es el ÚNICO punto de entrada que debe usar el Panel Fiscal.
 Se encarga de:
 - Diagnosticar el PDF
 - Detectar el banco
@@ -11,26 +11,23 @@ Se encarga de:
 
 from typing import Optional
 
-# =========================
-# IMPORTS INTERNOS
-# =========================
+# ======================================================
+# IMPORTS INTERNOS (ABSOLUTOS, SIN AMBIGÜEDAD)
+# ======================================================
 
 from external.extractor_bancario.bank_detection.detector import BankDetector
-
 
 from external.extractor_bancario.core.diagnostics import diagnose_pdf
 from external.extractor_bancario.core.router import ParserRouter
 from external.extractor_bancario.core.models import ExtractionResult
 
 from external.extractor_bancario.parsers.banks.bcorrientes.resumen import (
-    ResumenBancoCorrientesParser
+    ResumenBancoCorrientesParser,
 )
 
-
-
-# =========================
+# ======================================================
 # REGISTRO DE PARSERS POR BANCO
-# =========================
+# ======================================================
 
 BANK_PARSERS = {
     "bcorrientes": [
@@ -40,10 +37,9 @@ BANK_PARSERS = {
     # "bnacion": [ResumenBancoNacionParser()],
 }
 
-
-# =========================
+# ======================================================
 # FACTORY DE ROUTER
-# =========================
+# ======================================================
 
 def _build_router_for_bank(bank_code: str) -> ParserRouter:
     """
@@ -52,16 +48,17 @@ def _build_router_for_bank(bank_code: str) -> ParserRouter:
     parsers = BANK_PARSERS.get(bank_code)
 
     if not parsers:
-        raise ValueError(f"No hay parsers registrados para el banco '{bank_code}'")
+        raise ValueError(
+            f"No hay parsers registrados para el banco '{bank_code}'"
+        )
 
     return ParserRouter(structural_parsers=parsers)
 
+# ======================================================
+# API PÚBLICA (LO QUE IMPORTA LA APP)
+# ======================================================
 
-# =========================
-# SERVICIO PRINCIPAL
-# =========================
-
-def extract_bank_pdf(
+def extract_bank_statement(
     pdf_bytes: bytes,
     filename: str,
 ) -> ExtractionResult:
@@ -91,8 +88,7 @@ def extract_bank_pdf(
     # 4️⃣ Ejecución del extractor
     result: ExtractionResult = router.route(pdf_bytes, profile)
 
-    # 5️⃣ Metadata extra para el panel
-    # (no rompe nada si después no se usa)
+    # 5️⃣ Metadata adicional (útil para el panel)
     result.profile.detected_bank = bank_code
 
     return result
