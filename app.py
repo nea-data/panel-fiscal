@@ -16,13 +16,14 @@ st.set_page_config(
 # ======================================================
 # AUTH / USUARIO ACTUAL + LANDING
 # ======================================================
-from auth.google_auth import get_current_user
 from auth.schema import init_db
 from auth.users import upsert_user_on_login
 
 init_db()
 
-current_user = get_current_user()
+current_user = None
+if hasattr(st, "user") and st.user and getattr(st.user, "email", None):
+    current_user = st.user
 
 # ------------------------------------------------------
 # LANDING DE INGRESO (ANTES DEL LOGIN)
