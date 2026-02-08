@@ -27,9 +27,8 @@ if hasattr(st, "user") and st.user and getattr(st.user, "email", None):
 
 # ------------------------------------------------------
 # LANDING DE INGRESO (ANTES DEL LOGIN)
-#   - OJO: get_current_user() ya dibuja el botón si no hay usuario
-# ------------------------------------------------------
 if not current_user or not getattr(current_user, "email", None):
+
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     st.markdown(
@@ -63,8 +62,13 @@ if not current_user or not getattr(current_user, "email", None):
             unsafe_allow_html=True
         )
 
-    st.stop()
+        # 🔑 BOTÓN REAL DE LOGIN
+        st.button(
+            "🔐 Ingresar con Google",
+            on_click=st.login
+        )
 
+    st.stop()
 
 
 # ------------------------------------------------------
