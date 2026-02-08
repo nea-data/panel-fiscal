@@ -105,16 +105,6 @@ if not is_active:
     st.stop()
 
 
-# ======================================================
-# CONFIG STREAMLIT (SIEMPRE PRIMERO)
-# ======================================================
-st.set_page_config(
-    page_title="NEA DATA · Panel Fiscal",
-    page_icon="📊",
-    layout="wide"
-)
-
-
 
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
