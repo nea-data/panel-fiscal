@@ -8,28 +8,21 @@ from io import BytesIO
 # AUTH / USUARIO ACTUAL
 # ======================================================
 from auth.google_auth import get_current_user
-from auth.db import get_connection
+from auth.schema import init_db
+from auth.users import upsert_user_on_login
+
+init_db()
 
 current_user = get_current_user()
-
 if not current_user:
-    st.stop()  # fuerza login Google
+    st.stop()
 
-# ======================================================
-# CONFIG ADMIN
-# ======================================================
+db_user = upsert_user_on_login(
+    email=current_user.email,
+    name=getattr(current_user, "name", "")
+)
 
-ADMIN_EMAILS = {
-    "neadata.contacto@gmail.com",
-}
-
-ADMIN_PASSWORD = "DATA2026"  # después mover a st.secrets
-
-is_admin_email = current_user.email in ADMIN_EMAILS
-
-if "admin_ok" not in st.session_state:
-    st.session_state.admin_ok = False
-
+st.session_state["db_user"] = db_user
 
 # ======================================================
 # CONFIG STREAMLIT (SIEMPRE PRIMERO)
