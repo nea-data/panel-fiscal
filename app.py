@@ -65,6 +65,8 @@ if not current_user or not getattr(current_user, "email", None):
 
     st.stop()
 
+
+
 # ------------------------------------------------------
 # USUARIO AUTENTICADO (YA CON EMAIL)
 # ------------------------------------------------------
