@@ -17,6 +17,31 @@ init_db()
 
 current_user = get_current_user()
 
+# ======================================================
+# ACCESO PENDIENTE / USUARIO SUSPENDIDO
+# ======================================================
+
+if not db_user.get("is_active", False):
+    st.markdown("""
+    <div style="text-align:center; margin-top:80px;">
+        <h2>🔒 Acceso pendiente de habilitación</h2>
+        <p style="color:#9CA3AF; font-size:16px;">
+            Tu cuenta fue registrada correctamente, pero aún no está habilitada.
+        </p>
+        <p style="color:#6EE7B7; font-size:15px;">
+            📩 Contactá a <b>neadata.contacto@gmail.com</b><br>
+            para activar tu suscripción.
+        </p>
+        <br>
+        <p style="color:#6B7280; font-size:13px;">
+            NEA DATA · Panel Fiscal
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.stop()
+
+
 # ------------------------------------------------------
 # LANDING DE INGRESO (ANTES DEL LOGIN)
 # ------------------------------------------------------
