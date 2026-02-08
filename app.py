@@ -14,23 +14,25 @@ st.set_page_config(
 )
 
 # ======================================================
-# AUTH / USUARIO ACTUAL + LANDING
+# AUTH / OAUTH GOOGLE (MANUAL)
 # ======================================================
 from auth.schema import init_db
 from auth.users import upsert_user_on_login
+from auth.google_auth import get_logged_in_user, login_button
 
 init_db()
 
-current_user = None
-if hasattr(st, "user") and st.user and getattr(st.user, "email", None):
-    current_user = st.user
+# Manejo de sesión persistente en Streamlit
+if "user_info" not in st.session_state:
+    st.session_state["user_info"] = get_logged_in_user()
+
+current_user = st.session_state["user_info"]
 
 # ------------------------------------------------------
-# LANDING DE INGRESO (ANTES DEL LOGIN)
-if not current_user or not getattr(current_user, "email", None):
-
+# LANDING DE INGRESO (SI NO HAY LOGIN)
+# ------------------------------------------------------
+if not current_user:
     st.markdown("<br><br>", unsafe_allow_html=True)
-
     st.markdown(
         """
         <div style="text-align: center;">
@@ -45,24 +47,26 @@ if not current_user or not getattr(current_user, "email", None):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 1, 1])
+    with col_btn_2:
+        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+        login_button() # Llamada a la función de tu auth/google_auth.py
+        st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown(
         """
-        <div style="text-align: center;">
+        <div style="text-align: center; margin-top: 20px;">
             <p style="color: #E5E7EB;">
                 Accedé de forma segura utilizando tu cuenta de Google.
             </p>
             <p style="color: #6B7280; font-size: 13px;">
-                🔐 Autenticación gestionada por Streamlit Cloud.<br>
+                🔐 Autenticación gestionada via Google OAuth 2.0.<br>
                 📩 Acceso habilitado solo para usuarios autorizados.
-            </p>
-            <p style="color:#6EE7B7; font-size:14px;">
-                👉 Si ya iniciaste sesión con Google, recargá la página.
             </p>
         </div>
         """,
         unsafe_allow_html=True
     )
-
     st.stop()
 
 
