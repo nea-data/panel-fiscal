@@ -3,8 +3,15 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
-from auth.guard import require_admin
 
+# ======================================================
+# CONFIG STREAMLIT (PRIMERO)
+# ======================================================
+st.set_page_config(
+    page_title="NEA DATA · Panel Fiscal",
+    page_icon="📊",
+    layout="wide"
+)
 
 # ======================================================
 # AUTH / USUARIO ACTUAL + LANDING
@@ -17,39 +24,11 @@ init_db()
 
 current_user = get_current_user()
 
-# ======================================================
-# ACCESO PENDIENTE / USUARIO SUSPENDIDO
-# ======================================================
-
-if db_user.get("status") != "active":
-    st.error("Tu cuenta no está activa. Contactanos para habilitar el acceso.")
-    st.stop()
-
-    st.markdown("""
-    <div style="text-align:center; margin-top:80px;">
-        <h2>🔒 Acceso pendiente de habilitación</h2>
-        <p style="color:#9CA3AF; font-size:16px;">
-            Tu cuenta fue registrada correctamente, pero aún no está habilitada.
-        </p>
-        <p style="color:#6EE7B7; font-size:15px;">
-            📩 Contactá a <b>neadata.contacto@gmail.com</b><br>
-            para activar tu suscripción.
-        </p>
-        <br>
-        <p style="color:#6B7280; font-size:13px;">
-            NEA DATA · Panel Fiscal
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.stop()
-
-
 # ------------------------------------------------------
 # LANDING DE INGRESO (ANTES DEL LOGIN)
+#   - OJO: get_current_user() ya dibuja el botón si no hay usuario
 # ------------------------------------------------------
-if not current_user or not hasattr(current_user, "email") or not current_user.email:
-
+if not current_user or not getattr(current_user, "email", None):
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     st.markdown(
@@ -83,19 +62,44 @@ if not current_user or not hasattr(current_user, "email") or not current_user.em
             unsafe_allow_html=True
         )
 
-        
-
     st.stop()
 
 # ------------------------------------------------------
 # USUARIO AUTENTICADO (YA CON EMAIL)
 # ------------------------------------------------------
 db_user = upsert_user_on_login(
-    email=current_user.email,
+    email=str(current_user.email).lower(),
     name=getattr(current_user, "name", "")
 )
-
 st.session_state["db_user"] = db_user
+
+# ------------------------------------------------------
+# ACCESO ACTIVO (compatibilidad: status o is_active)
+# ------------------------------------------------------
+is_active = True
+if "is_active" in db_user:
+    is_active = bool(db_user.get("is_active"))
+elif "status" in db_user:
+    is_active = (db_user.get("status") == "active")
+
+if not is_active:
+    st.markdown("""
+    <div style="text-align:center; margin-top:80px;">
+        <h2>🔒 Acceso pendiente de habilitación</h2>
+        <p style="color:#9CA3AF; font-size:16px;">
+            Tu cuenta fue registrada correctamente, pero aún no está habilitada.
+        </p>
+        <p style="color:#6EE7B7; font-size:15px;">
+            📩 Contactá a <b>neadata.contacto@gmail.com</b><br>
+            para activar tu suscripción.
+        </p>
+        <br>
+        <p style="color:#6B7280; font-size:13px;">
+            NEA DATA · Panel Fiscal
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
 
 
 # ======================================================
