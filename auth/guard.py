@@ -6,14 +6,11 @@ from auth.service import should_show_expiration_alert, get_usage_status
 
 
 def get_current_email() -> str | None:
-    # 1) Nuevo Streamlit auth: st.user
     if hasattr(st, "user") and st.user:
-        # st.user.email suele existir
         email = getattr(st.user, "email", None)
         if email:
             return str(email).lower()
 
-    # 2) Tu flujo actual
     email = st.session_state.get("user_email")
     if email:
         return str(email).lower()
@@ -32,7 +29,6 @@ def require_login() -> dict:
         st.error("Usuario no registrado. Volvé a iniciar sesión.")
         st.stop()
 
-    # bloqueos por estado
     if user["status"] == "suspended":
         st.error("Tu cuenta está suspendida. Contactanos para regularizar.")
         st.stop()
@@ -41,19 +37,24 @@ def require_login() -> dict:
         st.info("Tu cuenta está pendiente de alta. En breve vamos a habilitar el acceso.")
         st.stop()
 
-    # alerta suave de vencimiento (solo si está activo)
     if is_subscription_active(user["id"]) and should_show_expiration_alert(user["id"]):
         status = get_usage_status(user["id"])
         dl = status.get("days_left")
         if dl in (7, 5):
-            st.info(f"⏳ Tu suscripción vence en **{dl} días**. Para evitar interrupciones, contactanos para renovar.")
+            st.info(
+                f"⏳ Tu suscripción vence en **{dl} días**. "
+                "Para evitar interrupciones, contactanos para renovar."
+            )
 
     return user
 
 
 def require_active_subscription(user: dict) -> None:
     if not is_subscription_active(user["id"]):
-        st.warning("No tenés una suscripción activa (o está vencida). Contactanos para habilitar el acceso.")
+        st.warning(
+            "No tenés una suscripción activa (o está vencida). "
+            "Contactanos para habilitar el acceso."
+        )
         st.stop()
 
 
