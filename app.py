@@ -55,8 +55,7 @@ if not current_user or not hasattr(current_user, "email") or not current_user.em
             unsafe_allow_html=True
         )
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        login_button()
+        
 
     st.stop()
 
