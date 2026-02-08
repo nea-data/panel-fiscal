@@ -93,3 +93,19 @@ def get_user_from_callback():
         "name": info.get("name", ""),
         "picture": info.get("picture", ""),
     }
+
+def get_current_user():
+    # Si ya está logueado en sesión
+    if "user" in st.session_state:
+        return st.session_state["user"]
+
+    # Intentar obtener desde callback OAuth
+    user = get_user_from_callback()
+
+    if user:
+        st.session_state["user"] = user
+        return user
+
+    # No logueado → mostrar botón
+    google_login()
+    return None
