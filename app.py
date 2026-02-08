@@ -21,7 +21,10 @@ current_user = get_current_user()
 # ACCESO PENDIENTE / USUARIO SUSPENDIDO
 # ======================================================
 
-if not db_user.get("is_active", False):
+if db_user.get("status") != "active":
+    st.error("Tu cuenta no está activa. Contactanos para habilitar el acceso.")
+    st.stop()
+
     st.markdown("""
     <div style="text-align:center; margin-top:80px;">
         <h2>🔒 Acceso pendiente de habilitación</h2>
