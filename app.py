@@ -576,144 +576,202 @@ y no se almacenan ni reutilizan.
 # ======================================================
 elif seccion == "🛠 Administración":
 
+    from auth.guard import require_admin
+    from auth.users import (
+        list_users,
+        set_user_status,
+        set_user_role,
+    )
+    from auth.subscriptions import (
+        create_subscription,
+        renew_subscription,
+        change_plan,
+        suspend_subscription,
+    )
+    from auth.limits import get_current_period
+    from auth.extras import grant_usage_extras, get_usage_extras
+    from auth.service import get_usage_status
+
+    # 🔐 Validación real de admin (sin password)
+    admin = require_admin()
+    admin_email = admin["email"]
+
     st.markdown("## 🛠 Panel de Administración")
-
-    # -------------------------------
-    # 🔐 PROTECCIÓN CON PASSWORD
-    # -------------------------------
-    if "admin_ok" not in st.session_state:
-        st.session_state.admin_ok = False
-
-    if not st.session_state.admin_ok:
-        with st.form("admin_login"):
-            admin_pass = st.text_input("🔐 Contraseña de administrador", type="password")
-            submit = st.form_submit_button("Ingresar")
-
-            if submit:
-                if admin_pass == st.secrets["admin"]["password"]:
-                    st.session_state.admin_ok = True
-                    st.success("Acceso concedido")
-                    st.rerun()
-                else:
-                    st.error("Contraseña incorrecta")
-
-        st.stop()
-
-    # -------------------------------
-    # DB
-    # -------------------------------
-    conn = get_connection()
-    cur = conn.cursor()
 
     # ===============================
     # 👤 USUARIOS
     # ===============================
     st.subheader("👤 Usuarios registrados")
 
-    users_df = pd.read_sql("""
-        SELECT id, email, full_name, role, is_active, created_at, last_login
-        FROM users
-        ORDER BY created_at DESC
-    """, conn)
+    users = list_users()
+    if not users:
+        st.info("No hay usuarios registrados todavía.")
+        st.stop()
 
-    st.dataframe(users_df, use_container_width=True)
+    users_df = pd.DataFrame(users)
+    st.dataframe(
+        users_df[["id", "email", "name", "role", "status", "created_at", "last_login_at"]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
-    selected_user = st.selectbox(
+    selected_email = st.selectbox(
         "Seleccionar usuario",
         users_df["email"]
     )
 
-    user_id = users_df.loc[
-        users_df["email"] == selected_user, "id"
-    ].values[0]
+    selected_user = users_df.loc[
+        users_df["email"] == selected_email
+    ].iloc[0]
+
+    user_id = int(selected_user["id"])
+
+    st.divider()
 
     # ===============================
-    # 📦 PLAN Y SUSCRIPCIÓN
+    # 🔧 ESTADO Y ROL
     # ===============================
-    st.subheader("📦 Suscripción")
-
-    plans_df = pd.read_sql("SELECT id, name FROM plans", conn)
-
-    subs_df = pd.read_sql("""
-        SELECT s.id, s.status, s.start_date, s.end_date, p.name AS plan_name, p.id AS plan_id
-        FROM subscriptions s
-        JOIN plans p ON p.id = s.plan_id
-        WHERE s.user_id = ?
-    """, conn, params=(user_id,))
-
-    if subs_df.empty:
-        st.warning("Este usuario no tiene suscripción activa.")
-    else:
-        st.write(subs_df)
-
-    new_plan = st.selectbox(
-        "Cambiar plan",
-        plans_df["name"]
-    )
+    st.subheader("🔧 Estado y rol del usuario")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("🔁 Cambiar plan"):
-            plan_id = plans_df.loc[
-                plans_df["name"] == new_plan, "id"
-            ].values[0]
+        new_status = st.selectbox(
+            "Estado",
+            ["pending", "active", "suspended"],
+            index=["pending", "active", "suspended"].index(selected_user["status"])
+        )
 
-            cur.execute("""
-                UPDATE subscriptions
-                SET plan_id = ?
-                WHERE user_id = ?
-            """, (plan_id, user_id))
-
-            conn.commit()
-            st.success("Plan actualizado")
+        if st.button("Guardar estado"):
+            set_user_status(
+                user_id=user_id,
+                status=new_status,
+                admin_email=admin_email
+            )
+            st.success("Estado actualizado.")
             st.rerun()
 
     with col2:
-        if st.button("⛔ Suspender acceso"):
-            cur.execute("""
-                UPDATE users SET is_active = 0 WHERE id = ?
-            """, (user_id,))
-            conn.commit()
-            st.warning("Usuario suspendido")
+        new_role = st.selectbox(
+            "Rol",
+            ["user", "admin"],
+            index=["user", "admin"].index(selected_user["role"])
+        )
+
+        if st.button("Guardar rol"):
+            set_user_role(
+                user_id=user_id,
+                role=new_role,
+                admin_email=admin_email
+            )
+            st.success("Rol actualizado.")
             st.rerun()
 
-    if st.button("✅ Reactivar acceso"):
-        cur.execute("""
-            UPDATE users SET is_active = 1 WHERE id = ?
-        """, (user_id,))
-        conn.commit()
-        st.success("Usuario reactivado")
-        st.rerun()
+    st.divider()
 
     # ===============================
-    # 📊 USO MENSUAL
+    # 📦 SUSCRIPCIÓN (30 días rolling)
     # ===============================
-    st.subheader("📊 Uso mensual")
+    st.subheader("📦 Suscripción")
+
+    plan_code = st.selectbox(
+        "Plan",
+        ["FREE", "PRO", "STUDIO"],
+        index=1
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("➕ Crear suscripción (30 días)"):
+            create_subscription(
+                user_id=user_id,
+                plan_code=plan_code,
+                days=30,
+                changed_by=f"admin:{admin_email}"
+            )
+            st.success("Suscripción creada.")
+            st.rerun()
+
+    with col2:
+        if st.button("🔁 Renovar +30 días"):
+            renew_subscription(
+                user_id=user_id,
+                days=30,
+                changed_by=f"admin:{admin_email}"
+            )
+            st.success("Suscripción renovada.")
+            st.rerun()
+
+    with col3:
+        if st.button("🔄 Cambiar plan (sin renovar)"):
+            change_plan(
+                user_id=user_id,
+                new_plan_code=plan_code,
+                changed_by=f"admin:{admin_email}"
+            )
+            st.success("Plan actualizado.")
+            st.rerun()
+
+    st.divider()
+
+    # ===============================
+    # 📊 USO MENSUAL + EXTRAS
+    # ===============================
+    st.subheader("📊 Uso mensual y extras")
 
     period = get_current_period()
+    status = get_usage_status(user_id)
+    extras = get_usage_extras(user_id, period)
 
-    usage_df = pd.read_sql("""
-        SELECT period, cuit_queries, bank_extracts, fiscal_checks, last_activity
-        FROM usage
-        WHERE user_id = ?
-        ORDER BY period DESC
-    """, conn, params=(user_id,))
+    colA, colB, colC = st.columns(3)
 
-    st.dataframe(usage_df, use_container_width=True)
+    with colA:
+        st.metric("CUITs", status["cuit_display"])
+    with colB:
+        st.metric("Extractores", status["bank_display"])
+    with colC:
+        st.metric("Días hasta vencimiento", str(status["days_left"] or "-"))
 
-    if st.button("🔄 Resetear uso del período actual"):
-        cur.execute("""
-            UPDATE usage
-            SET cuit_queries = 0,
-                bank_extracts = 0,
-                fiscal_checks = 0
-            WHERE user_id = ?
-              AND period = ?
-        """, (user_id, period))
-        conn.commit()
-        st.success("Uso reseteado")
+    st.caption(f"Período actual: {period}")
+
+    st.divider()
+
+    st.markdown("### ➕ Otorgar extras para este período")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        extra_cuit = st.number_input(
+            "CUITs extras",
+            min_value=0,
+            value=int(extras["extra_cuit"]),
+            step=10
+        )
+
+    with col2:
+        extra_bank = st.number_input(
+            "Extractores extras",
+            min_value=0,
+            value=int(extras["extra_bank"]),
+            step=1
+        )
+
+    note = st.text_input("Nota interna (opcional)")
+
+    if st.button("Guardar extras"):
+        grant_usage_extras(
+            user_id=user_id,
+            period=period,
+            extra_cuit=int(extra_cuit),
+            extra_bank=int(extra_bank),
+            granted_by=f"admin:{admin_email}",
+            note=note
+        )
+        st.success("Extras actualizados.")
         st.rerun()
+
+    st.divider()
 
     # ===============================
     # ➕ ALTA MANUAL DE USUARIO
@@ -723,33 +781,30 @@ elif seccion == "🛠 Administración":
     with st.form("alta_usuario"):
         email = st.text_input("Email")
         name = st.text_input("Nombre")
-        plan_name = st.selectbox("Plan", plans_df["name"])
+        plan_code_new = st.selectbox("Plan inicial", ["FREE", "PRO", "STUDIO"])
         submit = st.form_submit_button("Crear usuario")
 
         if submit:
-            cur.execute("""
-                INSERT INTO users (email, full_name, role, is_active, created_at)
-                VALUES (?, ?, 'user', 1, CURRENT_TIMESTAMP)
-            """, (email, name))
+            from auth.users import upsert_user_on_login
 
-            new_user_id = cur.lastrowid
+            new_user = upsert_user_on_login(email=email, name=name)
 
-            plan_id = plans_df.loc[
-                plans_df["name"] == plan_name, "id"
-            ].values[0]
+            create_subscription(
+                user_id=new_user["id"],
+                plan_code=plan_code_new,
+                days=30,
+                changed_by=f"admin:{admin_email}"
+            )
 
-            cur.execute("""
-                INSERT INTO subscriptions (
-                    user_id, plan_id, status, start_date, end_date,
-                    payment_provider, payment_reference, created_at
-                )
-                VALUES (?, ?, 'active', DATE('now'), DATE('now', '+1 month'),
-                        'internal', 'admin-created', CURRENT_TIMESTAMP)
-            """, (new_user_id, plan_id))
+            set_user_status(
+                user_id=new_user["id"],
+                status="active",
+                admin_email=admin_email
+            )
 
-            conn.commit()
-            st.success("Usuario creado correctamente")
+            st.success("Usuario creado y activado correctamente.")
             st.rerun()
+
 
 # ======================================================
 # FOOTER
