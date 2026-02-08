@@ -5,7 +5,7 @@ from pathlib import Path
 from io import BytesIO
 
 # ======================================================
-# CONFIG STREAMLIT (PRIMERO)
+# 1. CONFIG STREAMLIT (DEBE SER LO PRIMERO)
 # ======================================================
 st.set_page_config(
     page_title="NEA DATA · Panel Fiscal",
@@ -14,25 +14,20 @@ st.set_page_config(
 )
 
 # ======================================================
-# AUTH / OAUTH GOOGLE (MANUAL)
+# 2. AUTH / GOOGLE OAUTH
 # ======================================================
 from auth.schema import init_db
 from auth.users import upsert_user_on_login
-from auth.google_auth import get_logged_in_user, login_button
+from auth.google_auth import get_current_user # Tu función del archivo compartido
 
 init_db()
 
-# Manejo de sesión persistente en Streamlit
-if "user_info" not in st.session_state:
-    st.session_state["user_info"] = get_logged_in_user()
+# Intentamos obtener el usuario (esto maneja el callback automáticamente)
+current_user = get_current_user()
 
-current_user = st.session_state["user_info"]
-
-# ------------------------------------------------------
-# LANDING DE INGRESO (SI NO HAY LOGIN)
-# ------------------------------------------------------
+# Si no hay usuario, la función ya mostró el botón de login, así que frenamos la ejecución.
 if not current_user:
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
         """
         <div style="text-align: center;">
@@ -40,28 +35,9 @@ if not current_user:
             <p style="color: #9CA3AF; margin-top: 6px;">
                 Gestión fiscal · Consultas de CUIT · Automatización contable
             </p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 1, 1])
-    with col_btn_2:
-        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-        login_button() # Llamada a la función de tu auth/google_auth.py
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div style="text-align: center; margin-top: 20px;">
-            <p style="color: #E5E7EB;">
-                Accedé de forma segura utilizando tu cuenta de Google.
-            </p>
-            <p style="color: #6B7280; font-size: 13px;">
-                🔐 Autenticación gestionada via Google OAuth 2.0.<br>
-                📩 Acceso habilitado solo para usuarios autorizados.
+            <p style="color: #6B7280; font-size: 13px; margin-top: 20px;">
+                🔐 Autenticación gestionada por Google OAuth.<br>
+                📩 Acceso habilitado solo para usuarios autorizados de Nea Data.
             </p>
         </div>
         """,
@@ -69,46 +45,35 @@ if not current_user:
     )
     st.stop()
 
-
-# ------------------------------------------------------
-# USUARIO AUTENTICADO (YA CON EMAIL)
-# ------------------------------------------------------
+# ======================================================
+# 3. VALIDACIÓN DE USUARIO EN DB (auth.db)
+# ======================================================
 db_user = upsert_user_on_login(
-    email=str(current_user.email).lower(),
-    name=getattr(current_user, "name", "")
+    email=str(current_user["email"]).lower(),
+    name=current_user.get("name", "")
 )
 st.session_state["db_user"] = db_user
 
-# ------------------------------------------------------
-# ACCESO ACTIVO (compatibilidad: status o is_active)
-# ------------------------------------------------------
-is_active = True
-if "is_active" in db_user:
-    is_active = bool(db_user.get("is_active"))
-elif "status" in db_user:
-    is_active = (db_user.get("status") == "active")
+# Control de acceso (active/pending)
+is_active = (db_user.get("status") == "active") or (db_user.get("is_active") is True)
 
 if not is_active:
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align:center; margin-top:80px;">
-        <h2>🔒 Acceso pendiente de habilitación</h2>
+        <h2>🔒 Acceso pendiente</h2>
         <p style="color:#9CA3AF; font-size:16px;">
-            Tu cuenta fue registrada correctamente, pero aún no está habilitada.
+            Hola <b>{current_user.get('name')}</b>, tu cuenta ({current_user['email']}) está en revisión.
         </p>
         <p style="color:#6EE7B7; font-size:15px;">
-            📩 Contactá a <b>neadata.contacto@gmail.com</b><br>
-            para activar tu suscripción.
-        </p>
-        <br>
-        <p style="color:#6B7280; font-size:13px;">
-            NEA DATA · Panel Fiscal
+            📩 Contactá a <b>neadata.contacto@gmail.com</b> para activar tu suscripción.
         </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    if st.button("Cerrar sesión"):
+        st.session_state.clear()
+        st.rerun()
     st.stop()
-
-
-
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
 # ======================================================
