@@ -7,24 +7,69 @@ from auth.guard import require_admin
 
 
 # ======================================================
-# AUTH / USUARIO ACTUAL
+# AUTH / USUARIO ACTUAL + LANDING
 # ======================================================
-from auth.google_auth import get_current_user
+from auth.google_auth import get_current_user, login_button
 from auth.schema import init_db
 from auth.users import upsert_user_on_login
 
 init_db()
 
 current_user = get_current_user()
-if not current_user:
+
+# ------------------------------------------------------
+# LANDING DE INGRESO (ANTES DEL LOGIN)
+# ------------------------------------------------------
+if not current_user or not hasattr(current_user, "email") or not current_user.email:
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div style="text-align: center;">
+            <h2 style="margin-bottom: 0;">📊 NEA DATA · Panel Fiscal</h2>
+            <p style="color: #9CA3AF; margin-top: 6px;">
+                Gestión fiscal · Consultas de CUIT · Automatización contable
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(
+            """
+            <div style="text-align: center;">
+                <p style="color: #E5E7EB;">
+                    Accedé de forma segura utilizando tu cuenta de Google.
+                </p>
+                <p style="color: #6B7280; font-size: 13px;">
+                    🔐 No almacenamos contraseñas ni claves fiscales.<br>
+                    📩 Acceso habilitado solo para usuarios autorizados.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        login_button()
+
     st.stop()
 
+# ------------------------------------------------------
+# USUARIO AUTENTICADO (YA CON EMAIL)
+# ------------------------------------------------------
 db_user = upsert_user_on_login(
     email=current_user.email,
     name=getattr(current_user, "name", "")
 )
 
 st.session_state["db_user"] = db_user
+
 
 # ======================================================
 # CONFIG STREAMLIT (SIEMPRE PRIMERO)
