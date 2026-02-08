@@ -45,28 +45,23 @@ if not current_user or not getattr(current_user, "email", None):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown(
-            """
-            <div style="text-align: center;">
-                <p style="color: #E5E7EB;">
-                    Accedé de forma segura utilizando tu cuenta de Google.
-                </p>
-                <p style="color: #6B7280; font-size: 13px;">
-                    🔐 No almacenamos contraseñas ni claves fiscales.<br>
-                    📩 Acceso habilitado solo para usuarios autorizados.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        # 🔑 BOTÓN REAL DE LOGIN
-        st.button(
-            "🔐 Ingresar con Google",
-            on_click=st.login
-        )
+    st.markdown(
+        """
+        <div style="text-align: center;">
+            <p style="color: #E5E7EB;">
+                Accedé de forma segura utilizando tu cuenta de Google.
+            </p>
+            <p style="color: #6B7280; font-size: 13px;">
+                🔐 Autenticación gestionada por Streamlit Cloud.<br>
+                📩 Acceso habilitado solo para usuarios autorizados.
+            </p>
+            <p style="color:#6EE7B7; font-size:14px;">
+                👉 Si ya iniciaste sesión con Google, recargá la página.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.stop()
 
