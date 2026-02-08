@@ -1,22 +1,14 @@
-# auth/service.py
-
-from datetime import datetime
-
 from auth.db import get_connection
 from auth.limits import (
     can_run_mass_cuit,
     can_run_bank_extract,
     get_current_period,
+    get_effective_limits,
 )
+from auth.subscriptions import days_until_expiration
 
-# ======================================================
-# USO / CONTADORES
-# ======================================================
 
-def _ensure_usage_row(user_id: int, period: str):
-    """
-    Crea la fila de usage si no existe para el período.
-    """
+def _ensure_usage_row(user_id: int, period: str) -> None:
     conn = get_connection()
     cur = conn.cursor()
 
@@ -27,28 +19,13 @@ def _ensure_usage_row(user_id: int, period: str):
 
     if cur.fetchone() is None:
         cur.execute("""
-            INSERT INTO usage (
-                user_id,
-                period,
-                cuit_queries,
-                bank_extracts,
-                fiscal_checks,
-                last_activity
-            )
+            INSERT INTO usage (user_id, period, cuit_queries, bank_extracts, fiscal_checks, last_activity)
             VALUES (?, ?, 0, 0, 0, CURRENT_TIMESTAMP)
         """, (user_id, period))
-
         conn.commit()
 
 
-# ======================================================
-# INCREMENTOS
-# ======================================================
-
-def increment_cuit_usage(user_id: int, amount: int):
-    """
-    Incrementa el uso de CUITs masivos.
-    """
+def increment_cuit_usage(user_id: int, amount: int) -> None:
     conn = get_connection()
     cur = conn.cursor()
 
@@ -59,17 +36,13 @@ def increment_cuit_usage(user_id: int, amount: int):
         UPDATE usage
         SET cuit_queries = cuit_queries + ?,
             last_activity = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-          AND period = ?
-    """, (amount, user_id, period))
+        WHERE user_id = ? AND period = ?
+    """, (int(amount), user_id, period))
 
     conn.commit()
 
 
-def increment_bank_extract(user_id: int):
-    """
-    Incrementa el uso de extractos bancarios.
-    """
+def increment_bank_extract(user_id: int) -> None:
     conn = get_connection()
     cur = conn.cursor()
 
@@ -80,85 +53,79 @@ def increment_bank_extract(user_id: int):
         UPDATE usage
         SET bank_extracts = bank_extracts + 1,
             last_activity = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-          AND period = ?
+        WHERE user_id = ? AND period = ?
     """, (user_id, period))
 
     conn.commit()
 
 
-# ======================================================
-# API PÚBLICA (USO CONTROLADO)
-# ======================================================
-
-def run_mass_cuit_check(user_id: int, cuits_to_process: int):
-    """
-    Punto de entrada ÚNICO para consultas masivas de CUITs.
-
-    - Valida límites
-    - Registra uso
-    - Lanza excepción si no puede ejecutar
-    """
-
-    can_run, message = can_run_mass_cuit(
-        user_id=user_id,
-        cuits_to_process=cuits_to_process
-    )
-
+def run_mass_cuit_check(user_id: int, cuits_to_process: int) -> bool:
+    can_run, message = can_run_mass_cuit(user_id=user_id, cuits_to_process=cuits_to_process)
     if not can_run:
         raise PermissionError(message)
 
-    increment_cuit_usage(
-        user_id=user_id,
-        amount=cuits_to_process
-    )
-
+    increment_cuit_usage(user_id=user_id, amount=cuits_to_process)
     return True
 
 
-def run_bank_extract(user_id: int):
-    """
-    Punto de entrada ÚNICO para extracción de extractos bancarios.
-    """
-
-    can_run, message = can_run_bank_extract(user_id)
-
+def run_bank_extract(user_id: int) -> bool:
+    can_run, message = can_run_bank_extract(user_id=user_id)
     if not can_run:
         raise PermissionError(message)
 
     increment_bank_extract(user_id)
-
     return True
 
 
-# ======================================================
-# CONSULTA DE USO (PARA EL PANEL)
-# ======================================================
-
 def get_usage_status(user_id: int) -> dict:
     """
-    Devuelve el uso actual vs límites del plan activo.
+    Devuelve: usados + base + extras + totales + days_left
     """
     conn = get_connection()
     cur = conn.cursor()
 
     period = get_current_period()
+    _ensure_usage_row(user_id, period)
 
     cur.execute("""
         SELECT
             COALESCE(u.cuit_queries, 0) AS cuit_used,
             COALESCE(u.bank_extracts, 0) AS bank_used,
-            p.max_cuit_queries,
-            p.max_bank_extracts
-        FROM users us
-        JOIN subscriptions s ON s.user_id = us.id
-        JOIN plans p ON p.id = s.plan_id
-        LEFT JOIN usage u
-            ON u.user_id = us.id AND u.period = ?
-        WHERE us.id = ?
-          AND s.status = 'active'
-    """, (period, user_id))
+            COALESCE(u.last_activity, NULL) AS last_activity
+        FROM usage u
+        WHERE u.user_id = ? AND u.period = ?
+        LIMIT 1
+    """, (user_id, period))
 
     row = cur.fetchone()
+    used = dict(row) if row else {"cuit_used": 0, "bank_used": 0, "last_activity": None}
 
-    return dict(row) if row else {}
+    limits = get_effective_limits(user_id, period)
+    days_left = days_until_expiration(user_id)
+
+    # strings display tipo: 180/200 +50
+    cuit_display = f"{used['cuit_used']} / {limits.get('base_cuit', 0)} +{limits.get('extra_cuit', 0)}"
+    bank_display = f"{used['bank_used']} / {limits.get('base_bank', 0)} +{limits.get('extra_bank', 0)}"
+
+    return {
+        "period": period,
+        "plan_code": limits.get("plan_code"),
+        "plan_name": limits.get("plan_name"),
+        "cuit_used": used["cuit_used"],
+        "bank_used": used["bank_used"],
+        "base_cuit": limits.get("base_cuit", 0),
+        "extra_cuit": limits.get("extra_cuit", 0),
+        "total_cuit": limits.get("total_cuit", 0),
+        "base_bank": limits.get("base_bank", 0),
+        "extra_bank": limits.get("extra_bank", 0),
+        "total_bank": limits.get("total_bank", 0),
+        "cuit_display": cuit_display,
+        "bank_display": bank_display,
+        "days_left": days_left,
+        "last_activity": used.get("last_activity"),
+    }
+
+
+def should_show_expiration_alert(user_id: int) -> bool:
+    dl = days_until_expiration(user_id)
+    return dl in (7, 5)
