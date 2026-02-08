@@ -9,7 +9,7 @@ from auth.guard import require_admin
 # ======================================================
 # AUTH / USUARIO ACTUAL + LANDING
 # ======================================================
-from auth.google_auth import get_current_user, login_button
+from auth.google_auth import get_current_user
 from auth.schema import init_db
 from auth.users import upsert_user_on_login
 
