@@ -50,7 +50,17 @@ def upsert_user_on_login(email: str, name: str = "") -> dict:
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, (email, name or "", role, status))
         conn.commit()
-        return get_user_by_email(email)
+        user = get_user_by_email(email)
+
+return {
+    "id": user["id"],
+    "email": user["email"],
+    "name": user.get("name", ""),
+    "role": user["role"],
+    "status": user["status"],
+    "is_active": user["status"] == "active",
+}
+
 
     # Update login + nombre si vino vacío antes
     cur.execute("""
@@ -61,7 +71,17 @@ def upsert_user_on_login(email: str, name: str = "") -> dict:
     """, (name or "", email))
     conn.commit()
 
-    return get_user_by_email(email)
+    user = get_user_by_email(email)
+
+return {
+    "id": user["id"],
+    "email": user["email"],
+    "name": user.get("name", ""),
+    "role": user["role"],
+    "status": user["status"],
+    "is_active": user["status"] == "active",
+}
+
 
 
 def list_users() -> List[Dict]:
