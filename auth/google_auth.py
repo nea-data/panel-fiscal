@@ -3,6 +3,10 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests
 
+# ======================================================
+# CONFIG DESDE SECRETS
+# ======================================================
+
 CLIENT_ID = st.secrets["google"]["client_id"]
 CLIENT_SECRET = st.secrets["google"]["client_secret"]
 REDIRECT_URI = st.secrets["google"]["redirect_uri"]
@@ -12,6 +16,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
+
+# ======================================================
+# LOGIN
+# ======================================================
 
 def google_login():
     flow = Flow.from_client_config(
@@ -28,7 +36,11 @@ def google_login():
         redirect_uri=REDIRECT_URI,
     )
 
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    auth_url, _ = flow.authorization_url(
+        prompt="consent",
+        access_type="offline",
+        include_granted_scopes="true",
+    )
 
     st.markdown(
         f"""
@@ -41,8 +53,13 @@ def google_login():
         unsafe_allow_html=True,
     )
 
+# ======================================================
+# CALLBACK
+# ======================================================
+
 def get_user_from_callback():
     query = st.query_params
+
     if "code" not in query:
         return None
 
@@ -74,4 +91,5 @@ def get_user_from_callback():
     return {
         "email": info["email"],
         "name": info.get("name", ""),
+        "picture": info.get("picture", ""),
     }
