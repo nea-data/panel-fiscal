@@ -54,25 +54,6 @@ st.sidebar.markdown("## 📊 **NEA DATA**")
 st.sidebar.markdown("Soluciones en Ciencia de Datos y Automatización")
 st.sidebar.markdown("---")
 
-# ======================================================
-# ADMIN LOGIN
-# ======================================================
-
-if is_admin_email and not st.session_state.admin_ok:
-    st.sidebar.markdown("## 🔐 Acceso administrador")
-
-    admin_pass = st.sidebar.text_input(
-        "Contraseña admin",
-        type="password"
-    )
-
-    if st.sidebar.button("Desbloquear"):
-        if admin_pass == ADMIN_PASSWORD:
-            st.session_state.admin_ok = True
-            st.sidebar.success("Acceso concedido")
-        else:
-            st.sidebar.error("Contraseña incorrecta")
-
 
 MENU = [
     "📅 Gestión Fiscal",
