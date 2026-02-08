@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
+from auth.guard import require_admin
+
 
 # ======================================================
 # AUTH / USUARIO ACTUAL
@@ -63,7 +65,7 @@ MENU = [
 ]
 
 
-if is_admin_email and st.session_state.admin_ok:
+if db_user["role"] == "admin":
     MENU.append("🛠 Administración")
 
 
