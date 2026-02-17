@@ -20,7 +20,7 @@ st.set_page_config(
 credentials = st.secrets["credentials"].to_dict()
 cookie = st.secrets["cookie"].to_dict()
 
-# Configuración del Authenticate con parámetros nombrados (Evita ValueErrors)
+# Inicialización
 authenticator = stauth.Authenticate(
     credentials=credentials,
     cookie_name=cookie['name'],
@@ -28,17 +28,20 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=cookie['expiry_days']
 )
 
-# Login con ubicación explícita
-name, authentication_status, username = authenticator.login(
-    label='Acceso NEA DATA', 
-    location='main'
-)
+# En la v0.3.6+, .login() NO devuelve valores directamente. 
+# Se encarga solo de renderizar y gestionar la sesión.
+authenticator.login(label='Acceso NEA DATA', location='main')
+
+# Extraemos los estados desde el session_state (forma correcta actual)
+authentication_status = st.session_state.get("authentication_status")
+username = st.session_state.get("username")
+name = st.session_state.get("name")
 
 if authentication_status == False:
     st.error('Usuario o contraseña incorrectos')
     st.stop()
 elif authentication_status == None:
-    st.info('Por favor, ingrese sus credenciales.')
+    st.info('Por favor, ingrese sus credenciales para acceder a Nea Data.')
     st.stop()
 
 # ======================================================
