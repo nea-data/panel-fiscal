@@ -7,5 +7,5 @@ cryptography
 openpyxl
 xlsxwriter
 pytz
-pdfplumbe
+pdfplumber
 streamlit-authenticator
