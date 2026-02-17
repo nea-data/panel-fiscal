@@ -1,16 +1,19 @@
-import sqlite3
-from pathlib import Path
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import streamlit as st
 
-DB_PATH = Path("data/auth.db")
+def get_connection():
+    """
+    Establece conexión con la base de datos de Supabase (Postgres).
+    La URL se toma de st.secrets["postgres"]["url"].
+    """
+    try:
+        # Usamos la URL de conexión de tus secrets
+        conn = psycopg2.connect(st.secrets["postgres"]["url"])
+        return conn
+    except Exception as e:
+        st.error(f"Error de conexión a la base de datos: {e}")
+        st.stop()
 
-
-def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# Alias por compatibilidad si ya llamabas get_conn()
-def get_conn() -> sqlite3.Connection:
+def get_conn():
     return get_connection()
