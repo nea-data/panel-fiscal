@@ -14,66 +14,45 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. AUTH / GOOGLE OAUTH
+# 2. AUTENTICACIÓN NATIVA (Secrets)
+# ======================================================
+credentials = st.secrets["credentials"].to_dict()
+cookie = st.secrets["cookie"].to_dict()
+preauthorized = st.secrets["preauthorized"].to_dict()
+
+authenticator = stauth.Authenticate(
+    credentials,
+    cookie['name'],
+    cookie['key'],
+    cookie['expiry_days'],
+    preauthorized
+)
+
+name, authentication_status, username = authenticator.login('Acceso NEA DATA', 'main')
+
+if authentication_status == False:
+    st.error('Usuario o contraseña incorrectos')
+    st.stop()
+elif authentication_status == None:
+    st.info('Por favor, ingrese sus credenciales.')
+    st.stop()
+
+# ======================================================
+# 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
 from auth.schema import init_db
-from auth.users import upsert_user_on_login
-from auth.google_auth import get_current_user # Tu función del archivo compartido
+from auth.users import get_user_by_email, list_users, set_user_status
+from auth.subscriptions import change_plan
 
 init_db()
+email_login = credentials['usernames'][username]['email']
+db_user = get_user_by_email(email_login)
 
-# Intentamos obtener el usuario (esto maneja el callback automáticamente)
-current_user = get_current_user()
-
-# Si no hay usuario, la función ya mostró el botón de login, así que frenamos la ejecución.
-if not current_user:
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div style="text-align: center;">
-            <h2 style="margin-bottom: 0;">📊 NEA DATA · Panel Fiscal</h2>
-            <p style="color: #9CA3AF; margin-top: 6px;">
-                Gestión fiscal · Consultas de CUIT · Automatización contable
-            </p>
-            <p style="color: #6B7280; font-size: 13px; margin-top: 20px;">
-                🔐 Autenticación gestionada por Google OAuth.<br>
-                📩 Acceso habilitado solo para usuarios autorizados de Nea Data.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+if not db_user:
+    st.error("Usuario no encontrado en la base de datos.")
     st.stop()
 
-# ======================================================
-# 3. VALIDACIÓN DE USUARIO EN DB (auth.db)
-# ======================================================
-db_user = upsert_user_on_login(
-    email=str(current_user["email"]).lower(),
-    name=current_user.get("name", "")
-)
 st.session_state["db_user"] = db_user
-
-# Control de acceso (active/pending)
-is_active = (db_user.get("status") == "active") or (db_user.get("is_active") is True)
-
-if not is_active:
-    st.markdown(f"""
-    <div style="text-align:center; margin-top:80px;">
-        <h2>🔒 Acceso pendiente</h2>
-        <p style="color:#9CA3AF; font-size:16px;">
-            Hola <b>{current_user.get('name')}</b>, tu cuenta ({current_user['email']}) está en revisión.
-        </p>
-        <p style="color:#6EE7B7; font-size:15px;">
-            📩 Contactá a <b>neadata.contacto@gmail.com</b> para activar tu suscripción.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("Cerrar sesión"):
-        st.session_state.clear()
-        st.rerun()
-    st.stop()
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
 # ======================================================
@@ -94,17 +73,18 @@ st.sidebar.markdown("Soluciones en Ciencia de Datos y Automatización")
 st.sidebar.markdown("---")
 
 
-MENU = [
-    "📅 Gestión Fiscal",
-    "🔎 Consultor de CUITs",
-    "🏦 Extractos Bancarios",
-    "📤 Emitidos / Recibidos"
-]
-
-
-if db_user["role"] == "admin":
-    MENU.append("🛠 Administración")
-
+# Definimos los menús según el rol que traemos de Supabase
+if db_user["role"] == "administración":
+    # Menú exclusivo para David (Admin)
+    MENU = ["🛠 Administración"]
+else:
+    # Menú exclusivo para los Contadores (Clientes)
+    MENU = [
+        "📅 Gestión Fiscal", 
+        "🔎 Consultor de CUITs", 
+        "🏦 Extractos Bancarios", 
+        "📤 Emitidos / Recibidos"
+    ]
 
 seccion = st.sidebar.radio(
     "Menú",
@@ -112,6 +92,8 @@ seccion = st.sidebar.radio(
     index=0
 )
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("📩 neadata.contacto@gmail.com")
 st.sidebar.markdown("---")
 st.sidebar.markdown("📩 neadata.contacto@gmail.com")
 st.sidebar.markdown("📍 Corrientes, Argentina")
