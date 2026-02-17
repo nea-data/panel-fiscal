@@ -19,17 +19,20 @@ st.set_page_config(
 # ======================================================
 credentials = st.secrets["credentials"].to_dict()
 cookie = st.secrets["cookie"].to_dict()
-preauthorized = st.secrets["preauthorized"].to_dict()
 
-# Eliminamos 'preauthorized' para cumplir con la nueva versión de la librería
+# Configuración del Authenticate con parámetros nombrados (Evita ValueErrors)
 authenticator = stauth.Authenticate(
-    credentials,
-    cookie['name'],
-    cookie['key'],
-    cookie['expiry_days']
+    credentials=credentials,
+    cookie_name=cookie['name'],
+    cookie_key=cookie['key'],
+    cookie_expiry_days=cookie['expiry_days']
 )
-# En la nueva versión, no hace falta pasar 'main'
-name, authentication_status, username = authenticator.login('Acceso NEA DATA')
+
+# Login con ubicación explícita
+name, authentication_status, username = authenticator.login(
+    label='Acceso NEA DATA', 
+    location='main'
+)
 
 if authentication_status == False:
     st.error('Usuario o contraseña incorrectos')
