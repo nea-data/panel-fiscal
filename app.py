@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
+import streamlit_authenticator as stauth
 
 # ======================================================
 # 1. CONFIG STREAMLIT (DEBE SER LO PRIMERO)
