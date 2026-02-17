@@ -2,110 +2,63 @@ import streamlit as st
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests
+from auth.users import upsert_user_google
 
-# ======================================================
-# CONFIG DESDE SECRETS
-# ======================================================
-
-CLIENT_ID = st.secrets["google"]["client_id"]
-CLIENT_SECRET = st.secrets["google"]["client_secret"]
-REDIRECT_URI = st.secrets["google"]["redirect_uri"]
-
-SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
-
-# ======================================================
-# LOGIN
-# ======================================================
-
-def google_login():
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI],
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
+def get_google_auth_flow():
+    # Construye el flujo usando los secrets
+    return Flow.from_client_config(
+        {"web": {
+            "client_id": st.secrets["google"]["client_id"],
+            "client_secret": st.secrets["google"]["client_secret"],
+            "auth_uri": st.secrets["google"]["auth_uri"],
+            "token_uri": st.secrets["google"]["token_uri"],
+        }},
+        scopes=[
+            "openid", 
+            "https://www.googleapis.com/auth/userinfo.email", 
+            "https://www.googleapis.com/auth/userinfo.profile"
+        ],
+        redirect_uri=st.secrets["google"]["redirect_uri"]
     )
 
-    auth_url, _ = flow.authorization_url(
-        prompt="consent",
-        access_type="offline",
-        include_granted_scopes="true",
-    )
+def login_google():
+    flow = get_google_auth_flow()
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    
+    st.markdown(f"""
+        <div style="text-align: center;">
+            <a href="{auth_url}" target="_self">
+                <button style="background-color: #4285F4; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                    🔐 Ingresar con Google
+                </button>
+            </a>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown(
-        f"""
-        <a href="{auth_url}">
-            <button style="padding:10px 20px;font-size:16px;">
-                🔐 Ingresar con Google
-            </button>
-        </a>
-        """,
-        unsafe_allow_html=True,
-    )
+def check_google_callback():
+    # Si detectamos el código de Google en la URL
+    if "code" in st.query_params and "user" not in st.session_state:
+        try:
+            flow = get_google_auth_flow()
+            flow.fetch_token(code=st.query_params["code"])
+            
+            # Verificamos el token
+            id_info = id_token.verify_oauth2_token(
+                flow.credentials.id_token, 
+                requests.Request(), 
+                st.secrets["google"]["client_id"]
+            )
+            
+            # Sincronizamos con Supabase (Tu tabla 'usuarios')
+            user_data = upsert_user_google(id_info["email"], id_info.get("name", "Usuario NEA"))
+            
+            # Guardamos en sesión
+            st.session_state["user"] = user_data
+            st.session_state["authentication_status"] = True
+            
+            # Limpiamos URL y recargamos
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error en login: {e}")
 
-# ======================================================
-# CALLBACK
-# ======================================================
-
-def get_user_from_callback():
-    query = st.query_params
-
-    if "code" not in query:
-        return None
-
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [REDIRECT_URI],
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-
-    flow.fetch_token(code=query["code"])
-
-    credentials = flow.credentials
-    request = requests.Request()
-
-    info = id_token.verify_oauth2_token(
-        credentials.id_token,
-        request,
-        CLIENT_ID,
-    )
-
-    return {
-        "email": info["email"],
-        "name": info.get("name", ""),
-        "picture": info.get("picture", ""),
-    }
-
-def get_current_user():
-    # Si ya está logueado en sesión
-    if "user" in st.session_state:
-        return st.session_state["user"]
-
-    # Intentar obtener desde callback OAuth
-    user = get_user_from_callback()
-
-    if user:
-        st.session_state["user"] = user
-        return user
-
-    # No logueado → mostrar botón
-    google_login()
-    return None
