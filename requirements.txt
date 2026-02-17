@@ -8,4 +8,4 @@ openpyxl
 xlsxwriter
 pytz
 pdfplumber
-streamlit-authenticator
+streamlit-authenticator==0.3.4
