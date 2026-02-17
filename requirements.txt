@@ -9,3 +9,4 @@ xlsxwriter
 pytz
 pdfplumber
 streamlit-authenticator
+psycopg2-binary
