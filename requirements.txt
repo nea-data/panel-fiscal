@@ -8,6 +8,4 @@ openpyxl
 xlsxwriter
 pytz
 pdfplumber
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
+streamlit-authenticator==0.3.4
