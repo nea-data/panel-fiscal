@@ -28,7 +28,8 @@ authenticator = stauth.Authenticate(
     cookie['key'],
     cookie['expiry_days']
 )
-name, authentication_status, username = authenticator.login('Acceso NEA DATA', 'main')
+# En la nueva versión, no hace falta pasar 'main'
+name, authentication_status, username = authenticator.login('Acceso NEA DATA')
 
 if authentication_status == False:
     st.error('Usuario o contraseña incorrectos')
