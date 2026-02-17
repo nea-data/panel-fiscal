@@ -28,9 +28,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=cookie['expiry_days']
 )
 
-# En la v0.3.6+, .login() NO devuelve valores directamente. 
-# Se encarga solo de renderizar y gestionar la sesión.
-authenticator.login(label='Acceso NEA DATA', location='main')
+authenticator.login(location='main')
 
 # Extraemos los estados desde el session_state (forma correcta actual)
 authentication_status = st.session_state.get("authentication_status")
