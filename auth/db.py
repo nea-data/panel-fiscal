@@ -4,15 +4,17 @@ import streamlit as st
 
 def get_connection():
     """
-    Establece conexión con la base de datos de Supabase (Postgres).
-    La URL se toma de st.secrets["postgres"]["url"].
+    Conecta a Supabase y configura el cursor para devolver diccionarios.
     """
     try:
-        # Usamos la URL de conexión de tus secrets
-        conn = psycopg2.connect(st.secrets["postgres"]["url"])
+        # ✅ Agregamos el cursor_factory aquí para que todo el sistema sea compatible
+        conn = psycopg2.connect(
+            st.secrets["postgres"]["url"],
+            cursor_factory=RealDictCursor 
+        )
         return conn
     except Exception as e:
-        st.error(f"Error de conexión a la base de datos: {e}")
+        st.error(f"❌ Error de conexión a Nea Data DB: {e}")
         st.stop()
 
 def get_conn():
