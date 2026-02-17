@@ -21,14 +21,13 @@ credentials = st.secrets["credentials"].to_dict()
 cookie = st.secrets["cookie"].to_dict()
 preauthorized = st.secrets["preauthorized"].to_dict()
 
+# Eliminamos 'preauthorized' para cumplir con la nueva versión de la librería
 authenticator = stauth.Authenticate(
     credentials,
     cookie['name'],
     cookie['key'],
-    cookie['expiry_days'],
-    preauthorized
+    cookie['expiry_days']
 )
-
 name, authentication_status, username = authenticator.login('Acceso NEA DATA', 'main')
 
 if authentication_status == False:
