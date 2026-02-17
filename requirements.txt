@@ -7,5 +7,5 @@ cryptography
 openpyxl
 xlsxwriter
 pytz
-pdfplumber
-streamlit-authenticator==0.3.4
+pdfplumbe
+streamlit-authenticator
