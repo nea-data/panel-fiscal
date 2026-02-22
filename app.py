@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
-import streamlit_authenticator as stauth
 
 # ======================================================
 # 1. CONFIG STREAMLIT (DEBE SER LO PRIMERO)
@@ -15,49 +14,103 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. AUTENTICACIÓN NATIVA (Secrets)
+# 2. GOOGLE AUTH (Streamlit Cloud)
 # ======================================================
-credentials = st.secrets["credentials"].to_dict()
-cookie = st.secrets["cookie"].to_dict()
+CLIENT_ID = st.secrets["google"]["client_id"]
+CLIENT_SECRET = st.secrets["google"]["client_secret"]
+REDIRECT_URI = st.secrets["google"]["redirect_uri"]
+AUTH_URI = st.secrets["google"]["auth_uri"]
+TOKEN_URI = st.secrets["google"]["token_uri"]
 
-# Inicialización
-authenticator = stauth.Authenticate(
-    credentials=credentials,
-    cookie_name=cookie['name'],
-    cookie_key=cookie['key'],
-    cookie_expiry_days=cookie['expiry_days']
-)
+SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+]
 
-authenticator.login(location='main')
+def _build_flow():
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "auth_uri": AUTH_URI,
+                "token_uri": TOKEN_URI,
+                "redirect_uris": [REDIRECT_URI],
+            }
+        },
+        scopes=SCOPES,
+        redirect_uri=REDIRECT_URI,
+    )
 
-# Extraemos los estados desde el session_state (forma correcta actual)
-authentication_status = st.session_state.get("authentication_status")
-username = st.session_state.get("username")
-name = st.session_state.get("name")
+def google_login_ui():
+    flow = _build_flow()
+    auth_url, _ = flow.authorization_url(prompt="consent")
+    st.title("🔐 Acceso al Panel Fiscal")
+    st.markdown("Iniciá sesión con tu cuenta Google para continuar.")
+    st.link_button("Iniciar sesión con Google", auth_url)
 
-if authentication_status == False:
-    st.error('Usuario o contraseña incorrectos')
-    st.stop()
-elif authentication_status == None:
-    st.info('Por favor, ingrese sus credenciales para acceder a Nea Data.')
+def handle_google_callback():
+    qp = st.query_params
+    if "code" not in qp:
+        return False
+
+    flow = _build_flow()
+    flow.fetch_token(code=qp["code"])
+
+    creds = flow.credentials
+    req = requests.Request()
+
+    info = id_token.verify_oauth2_token(
+        creds.id_token,
+        req,
+        CLIENT_ID,
+    )
+
+    st.session_state["user"] = {
+        "email": info.get("email"),
+        "name": info.get("name") or info.get("given_name") or "",
+        "picture": info.get("picture"),
+        "sub": info.get("sub"),
+    }
+
+    # Limpia el code de la URL (evita reruns raros)
+    st.query_params.clear()
+    return True
+
+# 1) Si vuelve de Google con code → completar login
+_ = handle_google_callback()
+
+# 2) Si no hay usuario logueado → mostrar UI y frenar
+if "user" not in st.session_state:
+    google_login_ui()
     st.stop()
 
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
 from auth.schema import init_db
-from auth.users import get_user_by_email, list_users, set_user_status
-from auth.subscriptions import change_plan
+from auth.users import get_user_by_email, upsert_user_on_login
 
 init_db()
-email_login = credentials['usernames'][username]['email']
-db_user = get_user_by_email(email_login)
 
+email_login = st.session_state["user"]["email"]
+name_login = st.session_state["user"]["name"]
+
+# Auto-registro/actualización en DB
+db_user = get_user_by_email(email_login)
 if not db_user:
-    st.error("Usuario no encontrado en la base de datos.")
+    db_user = upsert_user_on_login(email=email_login, name=name_login)
+
+# (Opcional pero recomendado) bloquear si pending/suspended
+if db_user.get("status") in ("pending", "suspended"):
+    st.error("Tu usuario no está activo. Contactá al administrador.")
     st.stop()
 
 st.session_state["db_user"] = db_user
+
+# Header mini
+st.sidebar.success(f"👤 {db_user.get('name','')} ({db_user.get('email','')})")
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
 # ======================================================
