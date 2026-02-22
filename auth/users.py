@@ -19,7 +19,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
     try:
         # ⚠️ IMPORTANTE: Comillas dobles por el espacio en "correo electrónico"
         cur.execute(
-            'SELECT * FROM usuarios WHERE "correo electrónico" = %s LIMIT 1',
+            'SELECT * FROM usuarios WHERE email = %s LIMIT 1',
             (email.lower().strip(),)
         )
         row = cur.fetchone()
