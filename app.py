@@ -657,11 +657,13 @@ y no se almacenan ni reutilizan.
 # ======================================================
 elif seccion == "🛠 Administración":
 
+    # Imports correctos y completos
     from auth.guard import require_admin
     from auth.users import (
         list_users,
         set_user_status,
         set_user_role,
+        upsert_user_google,
     )
     from auth.subscriptions import (
         create_subscription,
@@ -673,7 +675,9 @@ elif seccion == "🛠 Administración":
     from auth.extras import grant_usage_extras, get_usage_extras
     from auth.service import get_usage_status
 
-    # 🔐 Validación real de admin (sin password)
+    import pandas as pd
+
+    # 🔐 Validación real de admin
     admin = require_admin()
     admin_email = admin["email"]
 
@@ -685,13 +689,17 @@ elif seccion == "🛠 Administración":
     st.subheader("👤 Usuarios registrados")
 
     users = list_users()
+
     if not users:
         st.info("No hay usuarios registrados todavía.")
         st.stop()
 
     users_df = pd.DataFrame(users)
+
     st.dataframe(
-        users_df[["id", "email", "name", "role", "status", "created_at", "last_login_at"]],
+        users_df[
+            ["id", "email", "name", "role", "status", "created_at", "last_login_at"]
+        ],
         use_container_width=True,
         hide_index=True,
     )
@@ -720,7 +728,9 @@ elif seccion == "🛠 Administración":
         new_status = st.selectbox(
             "Estado",
             ["pending", "active", "suspended"],
-            index=["pending", "active", "suspended"].index(selected_user["status"])
+            index=["pending", "active", "suspended"].index(
+                selected_user["status"]
+            )
         )
 
         if st.button("Guardar estado"):
@@ -736,7 +746,9 @@ elif seccion == "🛠 Administración":
         new_role = st.selectbox(
             "Rol",
             ["user", "admin"],
-            index=["user", "admin"].index(selected_user["role"])
+            index=["user", "admin"].index(
+                selected_user["role"]
+            )
         )
 
         if st.button("Guardar rol"):
@@ -866,10 +878,14 @@ elif seccion == "🛠 Administración":
         submit = st.form_submit_button("Crear usuario")
 
         if submit:
-            from auth.users import upsert_user_on_login
 
-            new_user = upsert_user_on_login(email=email, name=name)
+            # Crear usuario (o actualizar si existe)
+            new_user = upsert_user_google(
+                email=email,
+                name=name
+            )
 
+            # Crear suscripción inicial
             create_subscription(
                 user_id=new_user["id"],
                 plan_code=plan_code_new,
@@ -877,6 +893,7 @@ elif seccion == "🛠 Administración":
                 changed_by=f"admin:{admin_email}"
             )
 
+            # Activar usuario
             set_user_status(
                 user_id=new_user["id"],
                 status="active",
@@ -885,7 +902,6 @@ elif seccion == "🛠 Administración":
 
             st.success("Usuario creado y activado correctamente.")
             st.rerun()
-
 
 # ======================================================
 # FOOTER
