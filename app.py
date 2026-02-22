@@ -94,7 +94,7 @@ if "user" not in st.session_state:
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
 from auth.schema import init_db
-from auth.users import get_user_by_email, upsert_user_on_login
+from auth.users import get_user_by_email, upsert_user_google
 
 init_db()
 
