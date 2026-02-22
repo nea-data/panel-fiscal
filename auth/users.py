@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict
 from auth.db import get_connection
+from auth.subscriptions import create_subscription, get_active_subscription
 
 # ======================================================
 # CONFIG
@@ -49,6 +50,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
 def upsert_user_google(email: str, name: str = "") -> dict:
     """
     Crea o actualiza usuario al loguearse con Google.
+    Si es usuario nuevo → crea plan FREE por 7 días.
     """
 
     conn = get_connection()
@@ -61,7 +63,7 @@ def upsert_user_google(email: str, name: str = "") -> dict:
         if not user:
 
             role = "admin" if email_clean == ADMIN_EMAIL.lower() else "user"
-            status = "active" if role == "admin" else "pending"
+            status = "active"
 
             cur.execute(
                 """
@@ -72,9 +74,22 @@ def upsert_user_google(email: str, name: str = "") -> dict:
             )
 
             conn.commit()
-            return get_user_by_email(email_clean)
 
-        # Actualiza último login
+            new_user = get_user_by_email(email_clean)
+
+            # 🔥 Si no es admin → crear FREE automáticamente
+            if role != "admin":
+                create_subscription(
+                    user_id=new_user["id"],
+                    plan_code="FREE"
+                )
+
+            return new_user
+
+        # ==========================
+        # Usuario existente
+        # ==========================
+
         cur.execute(
             """
             UPDATE users
@@ -86,6 +101,10 @@ def upsert_user_google(email: str, name: str = "") -> dict:
         )
 
         conn.commit()
+
+        # 🔥 Si no tiene suscripción activa → no crear nada automático
+        # El bloqueo lo maneja guard.py
+
         return get_user_by_email(email_clean)
 
     finally:
