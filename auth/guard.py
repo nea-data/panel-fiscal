@@ -2,7 +2,7 @@ import streamlit as st
 from auth.users import get_user_by_email
 from auth.subscriptions import is_subscription_active
 from auth.service import should_show_expiration_alert, get_usage_status
-
+from auth.db import get_connection
 
 def get_current_email() -> str | None:
     """
@@ -20,10 +20,19 @@ def get_current_email() -> str | None:
     return None
 
 
+def update_last_login(user_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE usuarios
+        SET ultimo_inicio_de_sesion_en = NOW()
+        WHERE id = %s
+    """, (user_id,))
+
+    conn.commit()
+
 def require_login() -> dict:
-    """
-    Valida identidad, existencia y estado en Supabase.
-    """
 
     email = get_current_email()
 
@@ -36,6 +45,11 @@ def require_login() -> dict:
     if not user:
         st.error("Usuario no registrado en Nea Data.")
         st.stop()
+
+    # 👇 NUEVO: registrar login solo una vez por sesión
+    if "login_recorded" not in st.session_state:
+        update_last_login(user["id"])
+        st.session_state["login_recorded"] = True
 
     # Validamos status correcto
     if user.get("status") == "suspended":
