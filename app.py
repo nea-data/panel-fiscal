@@ -136,7 +136,7 @@ st.sidebar.markdown("---")
 
 
 # Definimos los menús según el rol que traemos de Supabase
-if db_user["role"] == "administración":
+if db_user["role"] == "admin":
     # Menú exclusivo para David (Admin)
     MENU = ["🛠 Administración"]
 else:
