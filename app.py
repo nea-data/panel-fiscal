@@ -3,6 +3,10 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
+from google_auth_oauthlib.flow import Flow
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
 
 # ======================================================
 # 1. CONFIG STREAMLIT (DEBE SER LO PRIMERO)
