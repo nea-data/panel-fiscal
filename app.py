@@ -156,8 +156,6 @@ seccion = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("📩 neadata.contacto@gmail.com")
-st.sidebar.markdown("---")
-st.sidebar.markdown("📩 neadata.contacto@gmail.com")
 st.sidebar.markdown("📍 Corrientes, Argentina")
 
 # ======================================================
