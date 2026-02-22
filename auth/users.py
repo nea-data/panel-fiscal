@@ -61,7 +61,7 @@ def upsert_user_google(email: str, name: str = "") -> dict:
 
             cur.execute(
                 """
-                INSERT INTO usuarios ("correo electrónico", nombre, role, estado, created_at, last_login_at)
+                INSERT INTO usuarios (email, nombre, role, estado, created_at, last_login_at)
                 VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
                 (email_clean, name or "", role, estado)
