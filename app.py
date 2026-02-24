@@ -359,6 +359,8 @@ if seccion == "📅 Gestión Fiscal":
 elif seccion == "🔎 Consultor de CUITs":
 
     from core.consultor_cuit import consultar_cuit
+    from auth.limits import can_run_mass_cuit, get_current_period
+    from auth.usage import increment_cuit_usage
 
     st.markdown("## 🔎 Consultor de CUITs")
     st.markdown("<div class='subtitulo'>Consulta fiscal individual y masiva</div>", unsafe_allow_html=True)
@@ -371,6 +373,9 @@ elif seccion == "🔎 Consultor de CUITs":
         horizontal=True
     )
 
+    # ======================================================
+    # CONSULTA INDIVIDUAL (SIN LÍMITE)
+    # ======================================================
     if tipo == "Consulta individual":
         cuit = st.text_input("CUIT (11 dígitos)")
 
@@ -383,6 +388,9 @@ elif seccion == "🔎 Consultor de CUITs":
                 df_res = pd.DataFrame(res.items(), columns=["Campo", "Valor"])
                 st.table(df_res)
 
+    # ======================================================
+    # CONSULTA MASIVA (CON LÍMITE)
+    # ======================================================
     else:
         df_tpl = pd.DataFrame({"CUIT": [""], "OBSERVACIONES": [""]})
 
@@ -407,24 +415,62 @@ elif seccion == "🔎 Consultor de CUITs":
                 st.dataframe(df_in.head(50), use_container_width=True)
 
                 if st.button("🔍 Procesar CUITs"):
-                    resultados = []
-                    prog = st.progress(0)
-                    total = len(df_in)
 
-                    for i, row in enumerate(df_in.to_dict(orient="records"), start=1):
+                    user_id = st.session_state.get("db_user", {}).get("id")
+
+                    # ---------------------------------------------------
+                    # 1️⃣ Detectar CUIT válidos
+                    # ---------------------------------------------------
+                    cuits_validos = []
+
+                    for row in df_in.to_dict(orient="records"):
                         raw = (row.get(col_cuit) or "").strip()
                         cuit_norm = "".join(ch for ch in raw if ch.isdigit())
 
                         if cuit_norm.isdigit() and len(cuit_norm) == 11:
-                            res = consultar_cuit(cuit_norm)
-                        else:
-                            res = {"CUIT": raw, "Error": "CUIT inválido"}
+                            cuits_validos.append(cuit_norm)
 
+                    # 🔹 Eliminar duplicados
+                    cuits_unicos = list(dict.fromkeys(cuits_validos))
+                    total_validos = len(cuits_unicos)
+
+                    if total_validos == 0:
+                        st.warning("No se encontraron CUIT válidos en el archivo.")
+                        st.stop()
+
+                    # ---------------------------------------------------
+                    # 2️⃣ Validar límite
+                    # ---------------------------------------------------
+                    allowed, msg = can_run_mass_cuit(user_id, total_validos)
+
+                    if not allowed:
+                        st.error(msg)
+                        st.stop()
+
+                    # ---------------------------------------------------
+                    # 3️⃣ Procesar consultas
+                    # ---------------------------------------------------
+                    resultados = []
+                    prog = st.progress(0)
+
+                    for i, cuit in enumerate(cuits_unicos, start=1):
+                        res = consultar_cuit(cuit)
                         resultados.append(res)
-                        prog.progress(int(i * 100 / max(total, 1)))
+                        prog.progress(int(i * 100 / total_validos))
 
                     df_out = pd.DataFrame(resultados)
 
+                    # ---------------------------------------------------
+                    # 4️⃣ Incrementar uso (después de éxito)
+                    # ---------------------------------------------------
+                    period = get_current_period()
+                    increment_cuit_usage(user_id, total_validos, period)
+
+                    st.success(f"Se descontaron {total_validos} consultas del período actual.")
+
+                    # ---------------------------------------------------
+                    # 5️⃣ Mostrar resultados
+                    # ---------------------------------------------------
                     st.dataframe(df_out, use_container_width=True)
 
                     st.download_button(
