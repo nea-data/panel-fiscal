@@ -1,7 +1,37 @@
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Any
 from auth.db import get_connection
 
+
+# =====================================================
+# HELPERS DE FECHA (UTC AWARE)
+# =====================================================
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_aware_utc(dt: Any) -> Optional[datetime]:
+    """
+    Convierte cualquier datetime a timezone-aware en UTC.
+    Maneja naive, aware, string ISO y None.
+    """
+    if dt is None:
+        return None
+
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    if not isinstance(dt, datetime):
+        return None
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(timezone.utc)
 
 
 # =====================================================
@@ -37,25 +67,25 @@ def get_active_subscription(user_id: int) -> Optional[dict]:
                 JOIN plans p ON p.id = s.plan_id
                 WHERE s.user_id = %s
                   AND s.status = 'active'
-                ORDER BY s.end_date DESC
+                ORDER BY s.end_date DESC NULLS LAST
                 LIMIT 1
             """, (user_id,))
 
             row = cur.fetchone()
-
             if not row:
                 return None
 
             sub = dict(row)
 
-            # 🔥 VALIDACIÓN DEFINITIVA EN PYTHON
-            end_date = sub.get("end_date")
-
-            if not end_date:
+            end_date = _to_aware_utc(sub.get("end_date"))
+            if end_date is None:
                 return None
 
-            if end_date < datetime.utcnow():
+            if end_date <= _utc_now():
                 return None
+
+            sub["end_date"] = end_date
+            sub["start_date"] = _to_aware_utc(sub.get("start_date"))
 
             return sub
 
@@ -76,10 +106,12 @@ def days_until_expiration(user_id: int) -> Optional[int]:
     if not sub:
         return None
 
-    end_dt = sub["end_date"]
-    now_dt = datetime.utcnow()
-    delta = end_dt - now_dt
-    return max(0, delta.days)
+    end_dt = _to_aware_utc(sub.get("end_date"))
+    if end_dt is None:
+        return None
+
+    delta = end_dt - _utc_now()
+    return max(0, int(delta.total_seconds() // 86400))
 
 
 # =====================================================
@@ -97,12 +129,8 @@ def create_subscription(
     if not plan:
         raise ValueError("Plan inexistente")
 
-    # 🔥 Lógica automática de duración
     if days is None:
-        if plan_code == "FREE":
-            days = 7
-        else:
-            days = 30
+        days = 7 if plan_code == "FREE" else 30
 
     conn = get_connection()
 
@@ -110,7 +138,7 @@ def create_subscription(
         with conn:
             with conn.cursor() as cur:
 
-                # Desactiva suscripciones activas previas
+                # Expirar activas previas
                 cur.execute("""
                     UPDATE subscriptions
                     SET status = 'expired'
@@ -118,7 +146,7 @@ def create_subscription(
                       AND status = 'active'
                 """, (user_id,))
 
-                start = datetime.utcnow()
+                start = _utc_now()
                 end = start + timedelta(days=days)
 
                 cur.execute("""
@@ -146,7 +174,6 @@ def renew_subscription(user_id: int, days: int = 30, changed_by: str = "") -> No
     active = get_active_subscription(user_id)
 
     if not active:
-        # Si no tiene activa → crear FREE por defecto
         create_subscription(user_id, "FREE", days=7, changed_by=changed_by)
         return
 
@@ -156,7 +183,12 @@ def renew_subscription(user_id: int, days: int = 30, changed_by: str = "") -> No
         with conn:
             with conn.cursor() as cur:
 
-                base_end = active["end_date"]
+                base_end = _to_aware_utc(active.get("end_date"))
+                now = _utc_now()
+
+                if base_end is None or base_end < now:
+                    base_end = now
+
                 new_end = base_end + timedelta(days=days)
 
                 cur.execute("""
