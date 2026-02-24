@@ -48,18 +48,20 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
 # ======================================================
 
 def upsert_user_google(email: str, name: str = "") -> dict:
-    """
-    Crea o actualiza usuario al loguearse con Google.
-    Si es usuario nuevo → crea plan FREE por 7 días.
-    """
+
+    email_clean = email.lower().strip()
 
     conn = get_connection()
     cur = conn.cursor()
 
-    email_clean = email.lower().strip()
-    user = get_user_by_email(email_clean)
-
     try:
+        # 🔎 Buscar usuario directamente en ESTA conexión
+        cur.execute(
+            "SELECT * FROM users WHERE email = %s LIMIT 1",
+            (email_clean,)
+        )
+        user = cur.fetchone()
+
         if not user:
 
             role = "admin" if email_clean == ADMIN_EMAIL.lower() else "user"
@@ -69,48 +71,43 @@ def upsert_user_google(email: str, name: str = "") -> dict:
                 """
                 INSERT INTO users (email, name, role, status, created_at, last_login_at)
                 VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING *
                 """,
                 (email_clean, name or "", role, status)
             )
 
+            new_user = cur.fetchone()
             conn.commit()
 
-            new_user = get_user_by_email(email_clean)
-
-            # 🔥 Si no es admin → crear FREE automáticamente
+            # Si no es admin → crear FREE
             if role != "admin":
                 create_subscription(
                     user_id=new_user["id"],
                     plan_code="FREE"
                 )
 
-            return new_user
+            return dict(new_user)
 
-        # ==========================
         # Usuario existente
-        # ==========================
-
         cur.execute(
             """
             UPDATE users
             SET last_login_at = CURRENT_TIMESTAMP,
                 name = CASE WHEN name IS NULL OR name = '' THEN %s ELSE name END
             WHERE email = %s
+            RETURNING *
             """,
             (name or "", email_clean)
         )
 
+        updated_user = cur.fetchone()
         conn.commit()
 
-        # 🔥 Si no tiene suscripción activa → no crear nada automático
-        # El bloqueo lo maneja guard.py
-
-        return get_user_by_email(email_clean)
+        return dict(updated_user)
 
     finally:
         cur.close()
         conn.close()
-
 
 # ======================================================
 # ADMIN ACTIONS
