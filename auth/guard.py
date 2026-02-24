@@ -23,9 +23,12 @@ def require_login() -> dict:
         st.error("Necesitás iniciar sesión con Google para continuar.")
         st.stop()
 
+    # 🔥 Importante: esto crea/actualiza usuario pero NO crea suscripción
     user = upsert_user_google(email)
 
-    # Estado bloqueado
+    # =============================
+    # VALIDACIÓN DE ESTADO
+    # =============================
     if user.get("status") == "suspended":
         st.error("Tu cuenta está suspendida.")
         st.stop()
@@ -34,16 +37,22 @@ def require_login() -> dict:
         st.info("Tu cuenta está pendiente de activación.")
         st.stop()
 
-    # 🔥 ADMIN NO NECESITA SUSCRIPCIÓN
+    # =============================
+    # ADMIN BYPASS TOTAL
+    # =============================
     if user.get("role") == "admin":
         return user
 
-    # 🔐 Usuarios normales sí necesitan suscripción
+    # =============================
+    # VALIDACIÓN REAL DE SUSCRIPCIÓN
+    # =============================
     if not is_subscription_active(user["id"]):
         st.error("Tu suscripción ha vencido. Contactanos para renovarla.")
         st.stop()
 
-    # Aviso de vencimiento
+    # =============================
+    # ALERTA DE VENCIMIENTO
+    # =============================
     try:
         if should_show_expiration_alert(user["id"]):
             status = get_usage_status(user["id"])
@@ -51,7 +60,7 @@ def require_login() -> dict:
 
             if dl in (7, 5, 3, 1):
                 st.warning(f"⏳ Tu suscripción vence en {dl} días.")
-    except:
+    except Exception:
         pass
 
     return user
