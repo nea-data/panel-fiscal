@@ -733,8 +733,27 @@ elif seccion == "🛠 Administración":
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Plan", sel.get("plan_code") or "-")
     c2.metric("Estado", sel.get("subscription_state"))
-    c3.metric("Días restantes", sel.get("days_left") or "-")
-    c4.metric("Último login", sel.get("last_login_at") or "Nunca")
+    # --- DÍAS RESTANTES ---
+    days_left = sel.get("days_left")
+    if days_left is not None:
+     days_left_str = str(int(days_left))
+    else:
+     days_left_str = "-"
+
+    c3.metric("Días restantes", days_left_str)
+
+# --- ÚLTIMO LOGIN ---
+    last_login = sel.get("last_login_at")
+
+    if last_login:
+      try:
+        last_login_str = pd.to_datetime(last_login).strftime("%d/%m/%Y %H:%M")
+    except:
+        last_login_str = str(last_login)
+     else:
+      last_login_str = "Nunca"
+
+    c4.metric("Último login", last_login_str)
 
     st.markdown("### 📊 Consumo")
 
