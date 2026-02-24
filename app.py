@@ -686,7 +686,7 @@ elif seccion == "🛠 Administración":
     # ======================================================
     # 1) DASHBOARD EJECUTIVO
     # ======================================================
-    df = get_admin_clients_overview()
+    df = pd.DataFrame(get_admin_clients_overview())
 
     if df.empty:
         st.info("No hay clientes (role=user) todavía.")
