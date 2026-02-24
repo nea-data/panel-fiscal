@@ -2,7 +2,7 @@ from datetime import datetime
 from auth.db import get_connection
 
 
-def get_admin_clients_overview():
+def get_admin_clients_overview(period=None):
     conn = get_connection()
 
     try:
