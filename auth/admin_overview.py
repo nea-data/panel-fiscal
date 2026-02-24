@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from auth.db import get_connection
 
 
@@ -43,18 +43,24 @@ def get_admin_clients_overview(period=None):
             rows = cur.fetchall()
             results = []
 
+            now = datetime.now(timezone.utc)
+
             for r in rows:
                 row = dict(r)
 
-                # Calcular días restantes
+                # ==========================
+                # Cálculo robusto días restantes
+                # ==========================
                 days_left = None
-
                 end_date = row.get("end_date")
 
-                if end_date and isinstance(end_date, datetime):
-                     delta = end_date - datetime.utcnow()
-                     days_left = max(0, delta.days)
-    
+                if isinstance(end_date, datetime):
+                    try:
+                        delta = end_date - now
+                        days_left = max(0, delta.days)
+                    except Exception:
+                        days_left = None
+
                 row["days_left"] = days_left
 
                 results.append(row)
