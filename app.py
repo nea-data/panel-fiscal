@@ -416,7 +416,14 @@ elif seccion == "🔎 Consultor de CUITs":
 
                 if st.button("🔍 Procesar CUITs"):
 
-                    user_id = st.session_state.get("db_user", {}).get("id")
+                    # ---------------------------------------------------
+                    # 0️⃣ Validar sesión y user_id
+                    # ---------------------------------------------------
+                    if "db_user" not in st.session_state:
+                        st.error("Sesión inválida. Volvé a iniciar sesión.")
+                        st.stop()
+
+                    user_id = st.session_state["db_user"]["id"]
 
                     # ---------------------------------------------------
                     # 1️⃣ Detectar CUIT válidos
@@ -439,34 +446,42 @@ elif seccion == "🔎 Consultor de CUITs":
                         st.stop()
 
                     # ---------------------------------------------------
-                    # 2️⃣ Validar límite
+                    # 2️⃣ Validar límite (contra CUIT únicos válidos)
                     # ---------------------------------------------------
                     allowed, msg = can_run_mass_cuit(user_id, total_validos)
-
                     if not allowed:
                         st.error(msg)
                         st.stop()
 
                     # ---------------------------------------------------
-                    # 3️⃣ Procesar consultas
+                    # 3️⃣ Procesar consultas (cobrar solo éxitos)
                     # ---------------------------------------------------
                     resultados = []
                     prog = st.progress(0)
+                    consultas_exitosas = 0
 
                     for i, cuit in enumerate(cuits_unicos, start=1):
-                        res = consultar_cuit(cuit)
-                        resultados.append(res)
+                        try:
+                            res = consultar_cuit(cuit)
+                            resultados.append(res)
+                            consultas_exitosas += 1
+                        except Exception as e:
+                            resultados.append({"CUIT": cuit, "Error": str(e)})
+
                         prog.progress(int(i * 100 / total_validos))
 
                     df_out = pd.DataFrame(resultados)
 
                     # ---------------------------------------------------
-                    # 4️⃣ Incrementar uso (después de éxito)
+                    # 4️⃣ Incrementar uso (después del procesamiento)
                     # ---------------------------------------------------
                     period = get_current_period()
-                    increment_cuit_usage(user_id, total_validos, period)
 
-                    st.success(f"Se descontaron {total_validos} consultas del período actual.")
+                    if consultas_exitosas > 0:
+                        increment_cuit_usage(user_id, consultas_exitosas, period)
+                        st.success(f"Se descontaron {consultas_exitosas} consultas del período actual.")
+                    else:
+                        st.warning("No se pudo procesar ninguna consulta. No se descontó uso.")
 
                     # ---------------------------------------------------
                     # 5️⃣ Mostrar resultados
