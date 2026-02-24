@@ -655,7 +655,9 @@ y no se almacenan ni reutilizan.
 # ======================================================
 elif seccion == "🛠 Administración":
 
-    # Imports correctos y completos
+    import pandas as pd
+    import streamlit as st
+
     from auth.guard import require_admin
     from auth.users import (
         list_users,
@@ -671,184 +673,280 @@ elif seccion == "🛠 Administración":
     )
     from auth.limits import get_current_period
     from auth.extras import grant_usage_extras, get_usage_extras
-    from auth.service import get_usage_status
+    from auth.admin_overview import get_admin_clients_overview
 
-    import pandas as pd
-
-    # 🔐 Validación real de admin
+    # 🔐 Admin real
     admin = require_admin()
     admin_email = admin["email"]
 
     st.markdown("## 🛠 Panel de Administración")
 
-    # ===============================
-    # 👤 USUARIOS
-    # ===============================
-    st.subheader("👤 Usuarios registrados")
+    period = get_current_period()
 
-    users = list_users()
+    # ======================================================
+    # 1) DASHBOARD EJECUTIVO
+    # ======================================================
+    df = get_admin_clients_overview(period=period)
 
-    if not users:
-        st.info("No hay usuarios registrados todavía.")
+    if df.empty:
+        st.info("No hay clientes (role=user) todavía.")
         st.stop()
 
-    users_df = pd.DataFrame(users)
+    total = len(df)
+    activos = int((df["subscription_state"] == "ACTIVO").sum())
+    vencidos = int((df["subscription_state"] == "VENCIDO").sum())
+    por_vencer = int((df["subscription_state"] == "POR_VENCER").sum())
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("👥 Clientes", total)
+    col2.metric("🟢 Activos", activos)
+    col3.metric("🔴 Vencidos", vencidos)
+    col4.metric("🟡 Por vencer (≤ 5 días)", por_vencer)
+
+    st.caption(f"Período de uso: **{period}**")
+
+    st.divider()
+
+    # ======================================================
+    # 2) FILTROS
+    # ======================================================
+    st.markdown("### 🔎 Filtros")
+
+    plans = sorted([p for p in df["plan_code"].dropna().unique().tolist()])
+    estados = ["Todos", "ACTIVO", "POR_VENCER", "VENCIDO", "SIN_PLAN", "INACTIVA"]
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        plan_filter = st.selectbox("Plan", ["Todos"] + plans, index=0)
+    with c2:
+        estado_filter = st.selectbox("Estado suscripción", estados, index=0)
+    with c3:
+        riesgo_filter = st.selectbox("Riesgo", ["Todos", "Uso > 80% (CUIT o Banco)"], index=0)
+    with c4:
+        search = st.text_input("Buscar (email / nombre)", value="")
+
+    df_view = df.copy()
+
+    if plan_filter != "Todos":
+        df_view = df_view[df_view["plan_code"] == plan_filter]
+
+    if estado_filter != "Todos":
+        df_view = df_view[df_view["subscription_state"] == estado_filter]
+
+    if riesgo_filter != "Todos":
+        df_view = df_view[(df_view["cuit_usage_pct"] >= 80) | (df_view["bank_usage_pct"] >= 80)]
+
+    if search.strip():
+        s = search.strip().lower()
+        df_view = df_view[
+            df_view["email"].str.lower().str.contains(s, na=False)
+            | df_view["name"].fillna("").str.lower().str.contains(s)
+        ]
+
+    st.divider()
+
+    # ======================================================
+    # 3) TABLA INTELIGENTE
+    # ======================================================
+    st.markdown("### 📋 Clientes (vista operativa)")
+
+    def badge_estado(row) -> str:
+        stt = row["subscription_state"]
+        if stt == "VENCIDO":
+            return "🔴 VENCIDO"
+        if stt == "POR_VENCER":
+            return "🟡 POR VENCER"
+        if stt == "ACTIVO":
+            return "🟢 ACTIVO"
+        if stt == "SIN_PLAN":
+            return "⚪ SIN PLAN"
+        return "⚫ INACTIVA"
+
+    df_view["Estado"] = df_view.apply(badge_estado, axis=1)
+
+    show_cols = [
+        "id",
+        "email",
+        "name",
+        "status",
+        "plan_code",
+        "Estado",
+        "days_left",
+        "cuit_display",
+        "cuit_usage_pct",
+        "bank_display",
+        "bank_usage_pct",
+        "created_at",
+        "last_login_at",
+        "last_activity",
+    ]
 
     st.dataframe(
-        users_df[
-            ["id", "email", "name", "role", "status", "created_at", "last_login_at"]
-        ],
+        df_view[show_cols].sort_values(["Estado", "days_left"], ascending=[True, True]),
         use_container_width=True,
         hide_index=True,
     )
 
-    selected_email = st.selectbox(
-        "Seleccionar usuario",
-        users_df["email"]
-    )
+    st.divider()
 
-    selected_user = users_df.loc[
-        users_df["email"] == selected_email
-    ].iloc[0]
+    # ======================================================
+    # 4) RIESGO AUTOMÁTICO
+    # ======================================================
+    st.markdown("### 🚨 Clientes en riesgo (automático)")
 
-    user_id = int(selected_user["id"])
+    df_riesgo = df[
+        (df["subscription_state"].isin(["VENCIDO", "POR_VENCER"]))
+        | (df["cuit_usage_pct"] >= 80)
+        | (df["bank_usage_pct"] >= 80)
+    ].copy()
+
+    if df_riesgo.empty:
+        st.success("✅ No hay clientes en riesgo ahora.")
+    else:
+        df_riesgo["Estado"] = df_riesgo.apply(badge_estado, axis=1)
+        st.dataframe(
+            df_riesgo[show_cols].sort_values(["Estado", "days_left"], ascending=[True, True]),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.divider()
 
-    # ===============================
-    # 🔧 ESTADO Y ROL
-    # ===============================
-    st.subheader("🔧 Estado y rol del usuario")
+    # ======================================================
+    # 5) PANEL DE ACCIONES (POR CLIENTE)
+    # ======================================================
+    st.markdown("### ⚙️ Acciones por cliente")
+
+    user_email = st.selectbox(
+        "Seleccionar cliente",
+        df["email"].tolist(),
+    )
+
+    sel = df[df["email"] == user_email].iloc[0]
+    user_id = int(sel["id"])
+
+    # resumen
+    cA, cB, cC, cD = st.columns(4)
+    cA.metric("Plan", str(sel.get("plan_code") or "-"))
+    cB.metric("Estado", str(sel.get("subscription_state")))
+    cC.metric("Días restantes", str(sel.get("days_left") if sel.get("days_left") is not None else "-"))
+    cD.metric("Último login", str(sel.get("last_login_at") or "-"))
+
+    st.caption(f"Uso CUIT: {sel['cuit_display']}  ({sel['cuit_usage_pct']}%) · Uso Banco: {sel['bank_display']} ({sel['bank_usage_pct']}%)")
+
+    st.divider()
+
+    # -----------------------------
+    # 5.1 Estado y Rol
+    # -----------------------------
+    st.markdown("#### 👤 Usuario")
 
     col1, col2 = st.columns(2)
-
     with col1:
         new_status = st.selectbox(
-            "Estado",
+            "Status usuario",
             ["pending", "active", "suspended"],
-            index=["pending", "active", "suspended"].index(
-                selected_user["status"]
-            )
+            index=["pending", "active", "suspended"].index(sel["status"]),
+            key="admin_status",
         )
-
-        if st.button("Guardar estado"):
-            set_user_status(
-                user_id=user_id,
-                status=new_status,
-                admin_email=admin_email
-            )
-            st.success("Estado actualizado.")
+        if st.button("Guardar status"):
+            set_user_status(user_id=user_id, status=new_status, admin_email=admin_email)
+            st.success("Status actualizado.")
             st.rerun()
 
     with col2:
         new_role = st.selectbox(
             "Rol",
             ["user", "admin"],
-            index=["user", "admin"].index(
-                selected_user["role"]
-            )
+            index=["user", "admin"].index(sel["role"]),
+            key="admin_role",
         )
-
         if st.button("Guardar rol"):
-            set_user_role(
-                user_id=user_id,
-                role=new_role,
-                admin_email=admin_email
-            )
+            set_user_role(user_id=user_id, role=new_role, admin_email=admin_email)
             st.success("Rol actualizado.")
             st.rerun()
 
     st.divider()
 
-    # ===============================
-    # 📦 SUSCRIPCIÓN (30 días rolling)
-    # ===============================
-    st.subheader("📦 Suscripción")
+    # -----------------------------
+    # 5.2 Suscripción (con lógica)
+    # -----------------------------
+    st.markdown("#### 📦 Suscripción")
 
-    plan_code = st.selectbox(
-        "Plan",
-        ["FREE", "PRO", "STUDIO"],
-        index=1
-    )
+    plan_code = st.selectbox("Plan", ["FREE", "PRO", "STUDIO"], index=0, key="admin_plan")
 
-    col1, col2, col3 = st.columns(3)
+    # duración automática: FREE=7, resto=30 (si no pasás days en create_subscription)
+    c1, c2, c3, c4 = st.columns(4)
 
-    with col1:
-        if st.button("➕ Crear suscripción (30 días)"):
+    with c1:
+        if st.button("➕ Crear / Reemplazar"):
+            # create_subscription ya expira las previas activas en tu versión
             create_subscription(
                 user_id=user_id,
                 plan_code=plan_code,
-                days=30,
-                changed_by=f"admin:{admin_email}"
+                days=None,  # FREE=7, resto=30
+                changed_by=f"admin:{admin_email}",
             )
-            st.success("Suscripción creada.")
+            st.success("Suscripción creada/reemplazada.")
             st.rerun()
 
-    with col2:
-        if st.button("🔁 Renovar +30 días"):
+    with c2:
+        if st.button("🔁 Renovar (lógico)"):
+            # Renovación lógica: si está vigente suma desde end_date, si venció suma desde hoy.
+            days = 7 if plan_code == "FREE" else 30
             renew_subscription(
                 user_id=user_id,
-                days=30,
-                changed_by=f"admin:{admin_email}"
+                days=days,
+                changed_by=f"admin:{admin_email}",
             )
             st.success("Suscripción renovada.")
             st.rerun()
 
-    with col3:
-        if st.button("🔄 Cambiar plan (sin renovar)"):
+    with c3:
+        if st.button("🔄 Cambiar plan"):
             change_plan(
                 user_id=user_id,
                 new_plan_code=plan_code,
-                changed_by=f"admin:{admin_email}"
+                changed_by=f"admin:{admin_email}",
             )
             st.success("Plan actualizado.")
             st.rerun()
 
+    with c4:
+        if st.button("⛔ Suspender suscripción"):
+            suspend_subscription(
+                user_id=user_id,
+                changed_by=f"admin:{admin_email}",
+            )
+            st.success("Suscripción suspendida.")
+            st.rerun()
+
     st.divider()
 
-    # ===============================
-    # 📊 USO MENSUAL + EXTRAS
-    # ===============================
-    st.subheader("📊 Uso mensual y extras")
+    # -----------------------------
+    # 5.3 Extras (mes actual)
+    # -----------------------------
+    st.markdown("#### ➕ Extras del período")
 
-    period = get_current_period()
-    status = get_usage_status(user_id)
     extras = get_usage_extras(user_id, period)
 
-    colA, colB, colC = st.columns(3)
-
-    with colA:
-        st.metric("CUITs", status["cuit_display"])
-    with colB:
-        st.metric("Extractores", status["bank_display"])
-    with colC:
-        st.metric("Días hasta vencimiento", str(status["days_left"] or "-"))
-
-    st.caption(f"Período actual: {period}")
-
-    st.divider()
-
-    st.markdown("### ➕ Otorgar extras para este período")
-
     col1, col2 = st.columns(2)
-
     with col1:
         extra_cuit = st.number_input(
-            "CUITs extras",
+            "CUITs extra",
             min_value=0,
-            value=int(extras["extra_cuit"]),
-            step=10
+            value=int(extras.get("extra_cuit", 0)),
+            step=10,
         )
-
     with col2:
         extra_bank = st.number_input(
-            "Extractores extras",
+            "Extractores extra",
             min_value=0,
-            value=int(extras["extra_bank"]),
-            step=1
+            value=int(extras.get("extra_bank", 0)),
+            step=1,
         )
 
-    note = st.text_input("Nota interna (opcional)")
+    note = st.text_input("Nota interna (opcional)", value="")
 
     if st.button("Guardar extras"):
         grant_usage_extras(
@@ -857,50 +955,43 @@ elif seccion == "🛠 Administración":
             extra_cuit=int(extra_cuit),
             extra_bank=int(extra_bank),
             granted_by=f"admin:{admin_email}",
-            note=note
+            note=note,
         )
-        st.success("Extras actualizados.")
+        st.success("Extras guardados.")
         st.rerun()
 
     st.divider()
 
-    # ===============================
-    # ➕ ALTA MANUAL DE USUARIO
-    # ===============================
-    st.subheader("➕ Alta manual de usuario")
+    # ======================================================
+    # 6) ALTA MANUAL
+    # ======================================================
+    st.markdown("### ➕ Alta manual de cliente")
 
     with st.form("alta_usuario"):
-        email = st.text_input("Email")
-        name = st.text_input("Nombre")
-        plan_code_new = st.selectbox("Plan inicial", ["FREE", "PRO", "STUDIO"])
-        submit = st.form_submit_button("Crear usuario")
+        email_new = st.text_input("Email")
+        name_new = st.text_input("Nombre")
+        plan_new = st.selectbox("Plan inicial", ["FREE", "PRO", "STUDIO"], index=0)
+        status_new = st.selectbox("Status inicial", ["pending", "active"], index=1)
+        submit = st.form_submit_button("Crear / Actualizar")
 
         if submit:
+            new_user = upsert_user_google(email=email_new, name=name_new)
 
-            # Crear usuario (o actualizar si existe)
-            new_user = upsert_user_google(
-                email=email,
-                name=name
-            )
-
-            # Crear suscripción inicial
-            create_subscription(
-                user_id=new_user["id"],
-                plan_code=plan_code_new,
-                days=30,
-                changed_by=f"admin:{admin_email}"
-            )
-
-            # Activar usuario
             set_user_status(
                 user_id=new_user["id"],
-                status="active",
-                admin_email=admin_email
+                status=status_new,
+                admin_email=admin_email,
             )
 
-            st.success("Usuario creado y activado correctamente.")
-            st.rerun()
+            create_subscription(
+                user_id=new_user["id"],
+                plan_code=plan_new,
+                days=None,  # FREE=7, resto=30
+                changed_by=f"admin:{admin_email}",
+            )
 
+            st.success("Cliente creado/actualizado + suscripción inicial asignada.")
+            st.rerun()
 # ======================================================
 # FOOTER
 # ======================================================
