@@ -896,6 +896,66 @@ elif seccion == "🛠 Administración":
                 )
                 st.success("Rol actualizado.")
                 st.rerun()
+    st.divider()
+
+    # ======================================================
+    # ALTA MANUAL DE CLIENTE
+    # ======================================================
+    st.markdown("## ➕ Alta manual de cliente")
+
+    with st.form("alta_usuario_form"):
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            email_new = st.text_input("Email del cliente")
+            name_new = st.text_input("Nombre / Razón Social")
+
+        with col2:
+            plan_new = st.selectbox(
+                "Plan inicial",
+                ["FREE", "PRO", "STUDIO"],
+                index=0
+            )
+
+            status_new = st.selectbox(
+                "Estado inicial",
+                ["active", "pending"],
+                index=0
+            )
+
+        submit_new = st.form_submit_button("Crear cliente")
+
+        if submit_new:
+
+            if not email_new or "@" not in email_new:
+                st.error("Ingresá un email válido.")
+                st.stop()
+
+            # 1️⃣ Crear o actualizar usuario
+            new_user = upsert_user_google(
+                email=email_new.strip(),
+                name=name_new.strip()
+            )
+
+            # 2️⃣ Setear status
+            set_user_status(
+                user_id=new_user["id"],
+                status=status_new,
+                admin_email=f"admin:{admin_email}",
+            )
+
+            # 3️⃣ Crear suscripción inicial
+            create_subscription(
+                user_id=new_user["id"],
+                plan_code=plan_new,
+                days=None,  # FREE=7, resto=30
+                changed_by=f"admin:{admin_email}",
+            )
+
+            st.success("✅ Cliente creado correctamente.")
+            st.rerun()
+
 # ======================================================
 # FOOTER
 # ======================================================
