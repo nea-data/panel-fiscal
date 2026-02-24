@@ -3,6 +3,7 @@ from typing import Optional
 from auth.db import get_connection
 
 
+
 # =====================================================
 # PLANES
 # =====================================================
@@ -21,12 +22,9 @@ def get_plan_by_code(plan_code: str) -> Optional[dict]:
         conn.close()
 
 
-# =====================================================
-# SUSCRIPCIÓN ACTIVA
-# =====================================================
-
 def get_active_subscription(user_id: int) -> Optional[dict]:
     conn = get_connection()
+
     try:
         with conn.cursor() as cur:
             cur.execute("""
@@ -39,13 +37,28 @@ def get_active_subscription(user_id: int) -> Optional[dict]:
                 JOIN plans p ON p.id = s.plan_id
                 WHERE s.user_id = %s
                   AND s.status = 'active'
-                  AND s.end_date >= CURRENT_TIMESTAMP
                 ORDER BY s.end_date DESC
                 LIMIT 1
             """, (user_id,))
 
             row = cur.fetchone()
-            return dict(row) if row else None
+
+            if not row:
+                return None
+
+            sub = dict(row)
+
+            # 🔥 VALIDACIÓN DEFINITIVA EN PYTHON
+            end_date = sub.get("end_date")
+
+            if not end_date:
+                return None
+
+            if end_date < datetime.utcnow():
+                return None
+
+            return sub
+
     finally:
         conn.close()
 
