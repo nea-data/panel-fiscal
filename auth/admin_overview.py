@@ -48,10 +48,13 @@ def get_admin_clients_overview(period=None):
 
                 # Calcular días restantes
                 days_left = None
-                if row.get("end_date"):
-                    delta = row["end_date"] - datetime.utcnow()
-                    days_left = max(0, delta.days)
 
+                end_date = row.get("end_date")
+
+                if end_date and isinstance(end_date, datetime):
+                     delta = end_date - datetime.utcnow()
+                     days_left = max(0, delta.days)
+    
                 row["days_left"] = days_left
 
                 results.append(row)
