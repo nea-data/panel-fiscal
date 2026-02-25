@@ -359,9 +359,9 @@ if seccion == "📅 Gestión Fiscal":
 elif seccion == "🔎 Consultor de CUITs":
 
     from core.consultor_cuit import consultar_cuit
-    from auth.limits import can_run_mass_cuit, get_current_period
-    from auth.usage import increment_cuit_usage
-
+    from auth.service import consume_quota_db
+    from auth.limits import get_current_period
+    
     st.markdown("## 🔎 Consultor de CUITs")
     st.markdown("<div class='subtitulo'>Consulta fiscal individual y masiva</div>", unsafe_allow_html=True)
     st.info("🔐 La consulta se realiza en tiempo real. No se almacena información.")
@@ -446,12 +446,24 @@ elif seccion == "🔎 Consultor de CUITs":
                         st.stop()
 
                     # ---------------------------------------------------
-                    # 2️⃣ Validar límite (contra CUIT únicos válidos)
+                    # 2️⃣ Validar y descontar cupo (ATÓMICO EN DB)
                     # ---------------------------------------------------
-                    allowed, msg = can_run_mass_cuit(user_id, total_validos)
-                    if not allowed:
-                        st.error(msg)
+                    period = get_current_period()
+                    quota = consume_quota_db(user_id, "cuit", total_validos, period)
+
+                    if not quota["allowed"]:
+                        st.error(
+                            f"No alcanzan los cupos.\n"
+                            f"Te quedan {quota['remaining']} disponibles "
+                            f"y el archivo contiene {total_validos} CUIT válidos."
+                        )
                         st.stop()
+
+                    st.info(
+                        f"Se descontarán {total_validos} consultas.\n"
+                        f"Uso actual: {quota['used']}/{quota['limit_total']} "
+                        f"(Restan {quota['remaining']})."
+                    )
 
                     # ---------------------------------------------------
                     # 3️⃣ Procesar consultas (cobrar solo éxitos)
@@ -473,15 +485,12 @@ elif seccion == "🔎 Consultor de CUITs":
                     df_out = pd.DataFrame(resultados)
 
                     # ---------------------------------------------------
-                    # 4️⃣ Incrementar uso (después del procesamiento)
+                    # 4️⃣ Confirmación de procesamiento
                     # ---------------------------------------------------
-                    period = get_current_period()
-
-                    if consultas_exitosas > 0:
-                        increment_cuit_usage(user_id, consultas_exitosas, period)
-                        st.success(f"Se descontaron {consultas_exitosas} consultas del período actual.")
-                    else:
-                        st.warning("No se pudo procesar ninguna consulta. No se descontó uso.")
+                    st.success(
+                        f"Consultas procesadas: {total_validos}. "
+                        f"Uso actualizado correctamente."
+                    )
 
                     # ---------------------------------------------------
                     # 5️⃣ Mostrar resultados
@@ -494,7 +503,6 @@ elif seccion == "🔎 Consultor de CUITs":
                         file_name="resultado_consulta_cuits.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
-
 
 # ======================================================
 # SECCIÓN 3 · EXTRACTOS BANCARIOS
