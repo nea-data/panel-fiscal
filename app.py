@@ -94,6 +94,9 @@ def handle_google_callback():
         st.error("Error en autenticación Google")
         st.stop()
 
+
+# 1) Procesar callback si vuelve de Google
+handle_google_callback()
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
