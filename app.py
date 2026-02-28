@@ -90,9 +90,11 @@ def handle_google_callback():
         st.query_params.clear()
         st.rerun()
 
-    except Exception:
-        st.error("Error en autenticación Google")
-        st.stop()
+    except Exception as e:
+    st.error("Error en autenticación Google")
+    st.write("Detalle técnico:")
+    st.write(str(e))
+    st.stop()
 
 
 # 1) Procesar callback si vuelve de Google
