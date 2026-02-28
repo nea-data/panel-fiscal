@@ -56,13 +56,15 @@ def google_login_ui():
 
 def handle_google_callback():
 
-    # 🔒 Evita doble ejecución
-    if st.session_state.get("oauth_processed"):
-        return
-
     qp = st.query_params
 
+    # Solo procesar si hay code
     if "code" not in qp:
+        return
+
+    # Si ya existe usuario en sesión, no reprocesar
+    if st.session_state.get("user"):
+        st.query_params.clear()
         return
 
     try:
@@ -85,12 +87,7 @@ def handle_google_callback():
             "sub": info.get("sub"),
         }
 
-        # 🔥 MARCAR COMO PROCESADO
-        st.session_state["oauth_processed"] = True
-
-        # 🔥 Limpiar URL
         st.query_params.clear()
-
         st.rerun()
 
     except Exception:
