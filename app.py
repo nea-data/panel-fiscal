@@ -100,25 +100,41 @@ def handle_google_callback():
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
+
 from auth.schema import init_db
 from auth.users import get_user_by_email, upsert_user_google
 
 init_db()
 
-email_login = st.session_state["user"]["email"]
-name_login = st.session_state["user"]["name"]
+user_session = st.session_state.get("user")
+
+if not user_session:
+    google_login_ui()
+    st.stop()
+
+email_login = user_session.get("email")
+name_login = user_session.get("name")
 
 # Auto-registro/actualización en DB
 db_user = get_user_by_email(email_login)
-if not db_user:
-    db_user = upsert_user_on_login(email=email_login, name=name_login)
 
-# (Opcional pero recomendado) bloquear si pending/suspended
+if not db_user:
+    db_user = upsert_user_google(
+        email=email_login,
+        name=name_login
+    )
+
+# Bloquear si pending/suspended
 if db_user.get("status") in ("pending", "suspended"):
     st.error("Tu usuario no está activo. Contactá al administrador.")
     st.stop()
 
 st.session_state["db_user"] = db_user
+
+# Header mini
+st.sidebar.success(
+    f"👤 {db_user.get('name','')} ({db_user.get('email','')})"
+)
 
 # Header mini
 st.sidebar.success(f"👤 {db_user.get('name','')} ({db_user.get('email','')})")
