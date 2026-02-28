@@ -55,40 +55,47 @@ def google_login_ui():
     st.link_button("Iniciar sesión con Google", auth_url)
 
 def handle_google_callback():
+
+    # 🔒 Evita doble ejecución
+    if st.session_state.get("oauth_processed"):
+        return
+
     qp = st.query_params
+
     if "code" not in qp:
-        return False
+        return
 
-    flow = _build_flow()
-    flow.fetch_token(code=qp["code"])
+    try:
+        flow = _build_flow()
+        flow.fetch_token(code=qp["code"])
 
-    creds = flow.credentials
-    req = requests.Request()
+        creds = flow.credentials
+        req = requests.Request()
 
-    info = id_token.verify_oauth2_token(
-        creds.id_token,
-        req,
-        CLIENT_ID,
-    )
+        info = id_token.verify_oauth2_token(
+            creds.id_token,
+            req,
+            CLIENT_ID,
+        )
 
-    st.session_state["user"] = {
-        "email": info.get("email"),
-        "name": info.get("name") or info.get("given_name") or "",
-        "picture": info.get("picture"),
-        "sub": info.get("sub"),
-    }
+        st.session_state["user"] = {
+            "email": info.get("email"),
+            "name": info.get("name") or info.get("given_name") or "",
+            "picture": info.get("picture"),
+            "sub": info.get("sub"),
+        }
 
-    # Limpia el code de la URL (evita reruns raros)
-    st.query_params.clear()
-    return True
+        # 🔥 MARCAR COMO PROCESADO
+        st.session_state["oauth_processed"] = True
 
-# 1) Si vuelve de Google con code → completar login
-_ = handle_google_callback()
+        # 🔥 Limpiar URL
+        st.query_params.clear()
 
-# 2) Si no hay usuario logueado → mostrar UI y frenar
-if "user" not in st.session_state:
-    google_login_ui()
-    st.stop()
+        st.rerun()
+
+    except Exception:
+        st.error("Error en autenticación Google")
+        st.stop()
 
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
