@@ -29,7 +29,6 @@ ensure_bootstrap_admin()
 # ======================================================
 
 from auth.users import authenticate_user
-from auth.db import get_connection
 
 def logout():
     st.session_state.pop("db_user", None)
@@ -909,9 +908,10 @@ elif seccion == "🛠 Administración":
                 st.success("Rol actualizado.")
                 st.rerun()
 
-    st.divider()
 
-       # ======================================================
+        st.divider()
+
+    # ======================================================
     # ALTA MANUAL DE CLIENTE
     # ======================================================
     st.markdown("## ➕ Alta manual de cliente")
