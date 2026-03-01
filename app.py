@@ -14,19 +14,25 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. LOGIN PROPIO (EMAIL + PASSWORD)
+# INIT DB (UNA SOLA VEZ)
 # ======================================================
 
 from auth.schema import init_db
+init_db()
+
+# ======================================================
+# LOGIN
+# ======================================================
+
 from auth.users import authenticate_user
 from auth.passwords import hash_password
 from auth.db import get_connection
 
-init_db()
 
 def logout():
     st.session_state.pop("db_user", None)
     st.rerun()
+
 
 def login_ui():
     st.title("🔐 Acceso al Panel Fiscal")
@@ -46,15 +52,24 @@ def login_ui():
         st.session_state["db_user"] = user
         st.rerun()
 
+
 db_user = st.session_state.get("db_user")
 
 if not db_user:
     login_ui()
     st.stop()
 
-# ------------------------------------------------------
-# Forzar cambio de contraseña si corresponde
-# ------------------------------------------------------
+# ======================================================
+# VALIDACIÓN STATUS
+# ======================================================
+
+if db_user.get("status") in ("pending", "suspended"):
+    st.error("Tu usuario no está activo. Contactá al administrador.")
+    st.stop()
+
+# ======================================================
+# FORZAR CAMBIO DE PASSWORD
+# ======================================================
 
 if db_user.get("must_change_password"):
 
@@ -66,6 +81,11 @@ if db_user.get("must_change_password"):
         submit_pw = st.form_submit_button("Guardar")
 
     if submit_pw:
+
+        if len(p1) < 8:
+            st.error("La contraseña debe tener al menos 8 caracteres.")
+            st.stop()
+
         if p1 != p2:
             st.error("Las contraseñas no coinciden.")
             st.stop()
@@ -88,54 +108,6 @@ if db_user.get("must_change_password"):
 
     st.stop()
 
-# ------------------------------------------------------
-# Sidebar usuario
-# ------------------------------------------------------
-
-st.sidebar.success(f"👤 {db_user['name']} ({db_user['email']})")
-st.sidebar.button("🚪 Cerrar sesión", on_click=logout)
-
-# ======================================================
-# 3. LÓGICA DE DATOS Y ROL (Supabase)
-# ======================================================
-
-from auth.schema import init_db
-from auth.users import get_user_by_email, upsert_user_google
-
-init_db()
-
-user_session = st.session_state.get("user")
-
-if not user_session:
-    google_login_ui()
-    st.stop()
-
-email_login = user_session.get("email")
-name_login = user_session.get("name")
-
-# Auto-registro/actualización en DB
-db_user = get_user_by_email(email_login)
-
-if not db_user:
-    db_user = upsert_user_google(
-        email=email_login,
-        name=name_login
-    )
-
-# Bloquear si pending/suspended
-if db_user.get("status") in ("pending", "suspended"):
-    st.error("Tu usuario no está activo. Contactá al administrador.")
-    st.stop()
-
-st.session_state["db_user"] = db_user
-
-# Header mini
-st.sidebar.success(
-    f"👤 {db_user.get('name','')} ({db_user.get('email','')})"
-)
-
-# Header mini
-st.sidebar.success(f"👤 {db_user.get('name','')} ({db_user.get('email','')})")
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
 # ======================================================
@@ -151,6 +123,9 @@ footer { visibility: hidden; }
 # ======================================================
 # SIDEBAR
 # ======================================================
+st.sidebar.success(f"👤 {db_user['name']} ({db_user['email']})")
+st.sidebar.button("🚪 Cerrar sesión", on_click=logout)
+
 st.sidebar.markdown("## 📊 **NEA DATA**")
 st.sidebar.markdown("Soluciones en Ciencia de Datos y Automatización")
 st.sidebar.markdown("---")
@@ -744,15 +719,12 @@ y no se almacenan ni reutilizan.
 # ======================================================
 elif seccion == "🛠 Administración":
 
-    import pandas as pd
-    import streamlit as st
-
     from auth.guard import require_admin
     from auth.users import (
-    set_user_status,
-    set_user_role,
-    get_user_by_email,
-    set_user_password
+        set_user_status,
+        set_user_role,
+        get_user_by_email,
+        set_user_password,
     )
     from auth.subscriptions import (
         create_subscription,
@@ -763,21 +735,32 @@ elif seccion == "🛠 Administración":
     from auth.limits import get_current_period
     from auth.extras import grant_usage_extras, get_usage_extras
     from auth.admin_overview import get_admin_clients_overview
+    from auth.db import get_connection
+    import secrets
 
+    # 🔐 Seguridad real
     admin = require_admin()
     admin_email = admin.get("email") or "system"
 
     st.markdown("## 🛠 Panel de Administración")
 
     period = get_current_period()
-    df = pd.DataFrame(get_admin_clients_overview())
+
+    # ======================================================
+    # CACHE OVERVIEW (MEJORA PERFORMANCE)
+    # ======================================================
+    @st.cache_data(ttl=30)
+    def load_overview():
+        return pd.DataFrame(get_admin_clients_overview())
+
+    df = load_overview()
 
     if df.empty:
-        st.info("No hay clientes (role=user) todavía.")
+        st.info("No hay clientes registrados todavía.")
         st.stop()
 
     # ======================================================
-    # 1) DASHBOARD
+    # 1) DASHBOARD GENERAL
     # ======================================================
     total = len(df)
     activos = int((df["subscription_state"] == "ACTIVO").sum())
@@ -793,7 +776,7 @@ elif seccion == "🛠 Administración":
     st.divider()
 
     # ======================================================
-    # 2) TABLA OPERATIVA
+    # 2) TABLA CLIENTES
     # ======================================================
     st.markdown("### 📋 Clientes")
 
@@ -806,12 +789,11 @@ elif seccion == "🛠 Administración":
     st.divider()
 
     # ======================================================
-    # 3) PANEL POR CLIENTE
+    # 3) GESTIÓN INDIVIDUAL
     # ======================================================
     st.markdown("## 👤 Gestión individual")
 
     user_email = st.selectbox("Seleccionar cliente", df["email"].tolist())
-
     sel = df[df["email"] == user_email].iloc[0]
     user_id = int(sel["id"])
 
@@ -824,44 +806,28 @@ elif seccion == "🛠 Administración":
 
     c1.metric("Plan", sel.get("plan_code") or "-")
     c2.metric("Estado", sel.get("subscription_state"))
+    c3.metric("Días restantes", sel.get("days_left") or "-")
 
-    # --- DÍAS RESTANTES ---
-    days_left = sel.get("days_left")
-    if days_left is not None:
-        days_left_str = str(int(days_left))
-    else:
-        days_left_str = "-"
-
-    c3.metric("Días restantes", days_left_str)
-
-    # --- ÚLTIMO LOGIN ---
     last_login = sel.get("last_login_at")
-
     if last_login:
-        try:
-            last_login_str = pd.to_datetime(last_login).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            last_login_str = str(last_login)
+        last_login = pd.to_datetime(last_login).strftime("%d/%m/%Y %H:%M")
     else:
-        last_login_str = "Nunca"
+        last_login = "Nunca"
 
-    c4.metric("Último login", last_login_str)
+    c4.metric("Último login", last_login)
 
     # ======================================================
     # CONSUMO
     # ======================================================
     st.markdown("### 📊 Consumo")
 
-    cuit_pct = float(sel.get("cuit_usage_pct") or 0)
-    bank_pct = float(sel.get("bank_usage_pct") or 0)
-
     st.markdown("**CUIT**")
-    st.progress(min(cuit_pct / 100, 1.0))
-    st.caption(f"{sel.get('cuit_display')} ({cuit_pct}%)")
+    st.progress(min(float(sel.get("cuit_usage_pct") or 0) / 100, 1.0))
+    st.caption(sel.get("cuit_display"))
 
     st.markdown("**Extractores**")
-    st.progress(min(bank_pct / 100, 1.0))
-    st.caption(f"{sel.get('bank_display')} ({bank_pct}%)")
+    st.progress(min(float(sel.get("bank_usage_pct") or 0) / 100, 1.0))
+    st.caption(sel.get("bank_display"))
 
     st.divider()
 
@@ -950,7 +916,7 @@ elif seccion == "🛠 Administración":
     st.divider()
 
     # ======================================================
-    # CONFIG USUARIO
+    # CONFIGURACIÓN USUARIO
     # ======================================================
     with st.expander("⚙ Configuración avanzada"):
 
@@ -987,103 +953,85 @@ elif seccion == "🛠 Administración":
                 )
                 st.success("Rol actualizado.")
                 st.rerun()
+
     st.divider()
 
     # ======================================================
     # ALTA MANUAL DE CLIENTE
     # ======================================================
-   st.markdown("## ➕ Alta manual de cliente")
+    st.markdown("## ➕ Alta manual de cliente")
 
-from auth.users import get_user_by_email, set_user_password
-from auth.db import get_connection
-import secrets
+    with st.form("alta_usuario_form"):
 
-with st.form("alta_usuario_form"):
+        col1, col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
+        with col1:
+            email_new = st.text_input("Email del cliente")
+            name_new = st.text_input("Nombre / Razón Social")
 
-    with col1:
-        email_new = st.text_input("Email del cliente")
-        name_new = st.text_input("Nombre / Razón Social")
+        with col2:
+            plan_new = st.selectbox("Plan inicial", ["FREE", "PRO", "STUDIO"])
+            status_new = st.selectbox("Estado inicial", ["active", "pending"])
 
-    with col2:
-        plan_new = st.selectbox(
-            "Plan inicial",
-            ["FREE", "PRO", "STUDIO"],
-            index=0
-        )
+        submit_new = st.form_submit_button("Crear cliente")
 
-        status_new = st.selectbox(
-            "Estado inicial",
-            ["active", "pending"],
-            index=0
-        )
+        if submit_new:
 
-    submit_new = st.form_submit_button("Crear cliente")
+            email_clean = email_new.strip().lower()
 
-    if submit_new:
+            if not email_clean or "@" not in email_clean:
+                st.error("Ingresá un email válido.")
+                st.stop()
 
-        email_clean = email_new.strip().lower()
+            existing_user = get_user_by_email(email_clean)
 
-        if not email_clean or "@" not in email_clean:
-            st.error("Ingresá un email válido.")
-            st.stop()
+            if existing_user:
+                new_user = existing_user
+                st.warning("El usuario ya existe. Se actualizarán datos.")
+            else:
+                conn = get_connection()
+                cur = conn.cursor()
 
-        # 🔎 Verificar si ya existe
-        existing_user = get_user_by_email(email_clean)
+                cur.execute(
+                    """
+                    INSERT INTO users (email, name, role, status, created_at)
+                    VALUES (%s, %s, 'user', %s, CURRENT_TIMESTAMP)
+                    RETURNING *
+                    """,
+                    (email_clean, name_new.strip(), status_new)
+                )
 
-        if existing_user:
-            st.warning("El usuario ya existe. Se actualizará su plan y status.")
-            new_user = existing_user
-        else:
-            # 🆕 Crear usuario manual
-            conn = get_connection()
-            cur = conn.cursor()
+                new_user = dict(cur.fetchone())
+                conn.commit()
+                cur.close()
+                conn.close()
 
-            cur.execute(
-                """
-                INSERT INTO users (email, name, role, status, created_at, last_login_at)
-                VALUES (%s, %s, 'user', %s, CURRENT_TIMESTAMP, NULL)
-                RETURNING *
-                """,
-                (email_clean, name_new.strip(), status_new)
+            temp_password = secrets.token_urlsafe(10)
+
+            set_user_password(
+                user_id=new_user["id"],
+                password=temp_password,
+                admin_email=f"admin:{admin_email}",
             )
 
-            new_user = dict(cur.fetchone())
-            conn.commit()
-            cur.close()
-            conn.close()
+            create_subscription(
+                user_id=new_user["id"],
+                plan_code=plan_new,
+                days=None,
+                changed_by=f"admin:{admin_email}",
+            )
 
-        # 🔐 Generar contraseña temporal
-        temp_password = secrets.token_urlsafe(10)
+            set_user_status(
+                user_id=new_user["id"],
+                status=status_new,
+                admin_email=admin_email,
+            )
 
-        set_user_password(
-            user_id=new_user["id"],
-            password=temp_password,
-            admin_email=f"admin:{admin_email}",
-        )
+            st.success("✅ Cliente creado correctamente.")
+            st.info(f"🔑 Contraseña temporal: {temp_password}")
+            st.warning("⚠️ Copiar ahora. Luego solo podrá resetearse.")
 
-        # 📦 Crear o actualizar suscripción
-        create_subscription(
-            user_id=new_user["id"],
-            plan_code=plan_new,
-            days=None,
-            changed_by=f"admin:{admin_email}",
-        )
-
-        # 🟢 Actualizar status
-        set_user_status(
-            user_id=new_user["id"],
-            status=status_new,
-            admin_email=f"admin:{admin_email}",
-        )
-
-        st.success("✅ Cliente creado correctamente.")
-        st.info(f"🔑 Contraseña temporal: {temp_password}")
-        st.warning("⚠️ Copiar ahora. Luego no se puede recuperar (solo resetear).")
-
-        st.rerun()
-
+            st.rerun()
 # ======================================================
 # FOOTER
 # ======================================================
