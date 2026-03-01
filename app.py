@@ -3,10 +3,6 @@ import pandas as pd
 from datetime import date
 from pathlib import Path
 from io import BytesIO
-from google_auth_oauthlib.flow import Flow
-from google.oauth2 import id_token
-from google.auth.transport import requests
-
 
 # ======================================================
 # 1. CONFIG STREAMLIT (DEBE SER LO PRIMERO)
@@ -18,117 +14,86 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. GOOGLE AUTH (Web Application - ESTABLE)
+# 2. LOGIN PROPIO (EMAIL + PASSWORD)
 # ======================================================
 
-from google_auth_oauthlib.flow import Flow
-from google.oauth2 import id_token
-from google.auth.transport import requests
+from auth.schema import init_db
+from auth.users import authenticate_user
+from auth.passwords import hash_password
+from auth.db import get_connection
 
-CLIENT_ID = st.secrets["google"]["client_id"]
-CLIENT_SECRET = st.secrets["google"]["client_secret"]
-REDIRECT_URI = st.secrets["google"]["redirect_uri"]
-AUTH_URI = st.secrets["google"]["auth_uri"]
-TOKEN_URI = st.secrets["google"]["token_uri"]
+init_db()
 
-SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
+def logout():
+    st.session_state.pop("db_user", None)
+    st.rerun()
 
-def build_flow():
-    return Flow.from_client_config(
-        {
-            "web": {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "auth_uri": AUTH_URI,
-                "token_uri": TOKEN_URI,
-                "redirect_uris": [REDIRECT_URI],
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-
-def google_login_ui():
-    flow = build_flow()
-
-    auth_url, state = flow.authorization_url(
-        prompt="consent",
-        include_granted_scopes="true",
-    )
-
-    st.session_state["oauth_state"] = state
-
+def login_ui():
     st.title("🔐 Acceso al Panel Fiscal")
-    st.markdown("Iniciá sesión con tu cuenta Google para continuar.")
 
-    st.markdown(
-        f"""
-        <a href="{auth_url}" target="_self" style="text-decoration:none">
-            <button style="
-                background:#4285F4;color:white;border:none;
-                padding:10px 18px;border-radius:8px;cursor:pointer;
-                font-weight:600">
-                Iniciar sesión con Google
-            </button>
-        </a>
-        """,
-        unsafe_allow_html=True,
-    )
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        password = st.text_input("Contraseña", type="password")
+        submit = st.form_submit_button("Ingresar")
 
-def handle_google_callback():
-    qp = st.query_params
-    code = qp.get("code")
-    state = qp.get("state")
+    if submit:
+        user, error = authenticate_user(email.strip(), password)
 
-    if not code:
-        return
+        if error:
+            st.error(error)
+            st.stop()
 
-    if st.session_state.get("user"):
-        st.query_params.clear()
-        return
-
-    expected_state = st.session_state.get("oauth_state")
-    if expected_state and state != expected_state:
-        st.query_params.clear()
-        st.error("State inválido. Reintentá login.")
-        st.stop()
-
-    try:
-        flow = build_flow()
-        flow.fetch_token(code=code)
-
-        credentials = flow.credentials
-
-        user_info = id_token.verify_oauth2_token(
-            credentials.id_token,
-            requests.Request(),
-            CLIENT_ID,
-        )
-
-        st.session_state["user"] = {
-            "email": user_info.get("email"),
-            "name": user_info.get("name") or "",
-            "picture": user_info.get("picture"),
-            "sub": user_info.get("sub"),
-        }
-
-        st.session_state.pop("oauth_state", None)
-        st.query_params.clear()
+        st.session_state["db_user"] = user
         st.rerun()
 
-    except Exception as e:
-        st.query_params.clear()
-        st.error("Error en autenticación Google")
-        st.code(str(e))
-        st.stop()
+db_user = st.session_state.get("db_user")
 
+if not db_user:
+    login_ui()
+    st.stop()
 
-# Procesar callback
-handle_google_callback()
+# ------------------------------------------------------
+# Forzar cambio de contraseña si corresponde
+# ------------------------------------------------------
+
+if db_user.get("must_change_password"):
+
+    st.warning("⚠️ Debés cambiar tu contraseña para continuar.")
+
+    with st.form("change_password_form"):
+        p1 = st.text_input("Nueva contraseña", type="password")
+        p2 = st.text_input("Repetir contraseña", type="password")
+        submit_pw = st.form_submit_button("Guardar")
+
+    if submit_pw:
+        if p1 != p2:
+            st.error("Las contraseñas no coinciden.")
+            st.stop()
+
+        new_hash = hash_password(p1)
+
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s",
+            (new_hash, db_user["id"])
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        st.success("Contraseña actualizada correctamente.")
+        st.session_state["db_user"]["must_change_password"] = False
+        st.rerun()
+
+    st.stop()
+
+# ------------------------------------------------------
+# Sidebar usuario
+# ------------------------------------------------------
+
+st.sidebar.success(f"👤 {db_user['name']} ({db_user['email']})")
+st.sidebar.button("🚪 Cerrar sesión", on_click=logout)
 
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
