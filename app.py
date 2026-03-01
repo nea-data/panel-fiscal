@@ -32,8 +32,23 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
+from google_auth_oauthlib.flow import Flow
+import secrets
+import hashlib
+import base64
+
 def _build_flow():
-    return Flow.from_client_config(
+
+    # 🔐 Generar code_verifier manual
+    code_verifier = base64.urlsafe_b64encode(
+        secrets.token_bytes(64)
+    ).rstrip(b"=").decode("utf-8")
+
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b"=").decode("utf-8")
+
+    flow = Flow.from_client_config(
         {
             "web": {
                 "client_id": CLIENT_ID,
@@ -47,22 +62,30 @@ def _build_flow():
         redirect_uri=REDIRECT_URI,
     )
 
+    # 🔥 Inyectar PKCE manual
+    flow.code_verifier = code_verifier
+    flow.code_challenge = code_challenge
+    flow.code_challenge_method = "S256"
+
+    return flow
+
 def google_login_ui():
     flow = _build_flow()
 
     auth_url, state = flow.authorization_url(
         prompt="consent",
         access_type="offline",
-        include_granted_scopes="true"
+        include_granted_scopes="true",
+        code_challenge=flow.code_challenge,
+        code_challenge_method="S256",
     )
 
-    # 🔥 Guardar PKCE verifier y state
-    st.session_state["oauth_state"] = state
+    # Guardar PKCE
     st.session_state["code_verifier"] = flow.code_verifier
+    st.session_state["oauth_state"] = state
 
     st.title("🔐 Acceso al Panel Fiscal")
     st.link_button("Iniciar sesión con Google", auth_url)
-
 
 def handle_google_callback():
 
@@ -74,10 +97,12 @@ def handle_google_callback():
     try:
         flow = _build_flow()
 
-        # 🔥 Restaurar PKCE
+        # 🔥 Restaurar verifier
         flow.code_verifier = st.session_state.get("code_verifier")
 
-        flow.fetch_token(code=qp["code"])
+        flow.fetch_token(
+            code=qp["code"]
+        )
 
         creds = flow.credentials
 
@@ -101,7 +126,6 @@ def handle_google_callback():
         st.error("Error en autenticación Google")
         st.write(str(e))
         st.stop()
-
 # 1) Procesar callback si vuelve de Google
 handle_google_callback()
 # ======================================================
