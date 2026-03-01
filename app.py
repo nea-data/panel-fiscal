@@ -49,9 +49,16 @@ def _build_flow():
 
 def google_login_ui():
     flow = _build_flow()
-    auth_url, state = flow.authorization_url(prompt="consent")
 
+    auth_url, state = flow.authorization_url(
+        prompt="consent",
+        access_type="offline",
+        include_granted_scopes="true"
+    )
+
+    # 🔥 Guardar PKCE verifier y state
     st.session_state["oauth_state"] = state
+    st.session_state["code_verifier"] = flow.code_verifier
 
     st.title("🔐 Acceso al Panel Fiscal")
     st.link_button("Iniciar sesión con Google", auth_url)
@@ -67,11 +74,10 @@ def handle_google_callback():
     try:
         flow = _build_flow()
 
-        # 🔥 restaurar state
-        flow.fetch_token(
-            code=qp["code"],
-            state=st.session_state.get("oauth_state")
-        )
+        # 🔥 Restaurar PKCE
+        flow.code_verifier = st.session_state.get("code_verifier")
+
+        flow.fetch_token(code=qp["code"])
 
         creds = flow.credentials
 
