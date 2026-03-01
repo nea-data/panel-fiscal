@@ -10,3 +10,4 @@ pytz
 pdfplumber
 psycopg2-binary
 passlib[bcrypt]
+bcrypt
