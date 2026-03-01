@@ -25,16 +25,10 @@ from auth.bootstrap import ensure_bootstrap_admin
 ensure_bootstrap_admin()
 
 # ======================================================
-# LOGIN Y GESTIÓN DE USUARIOS (AL PRINCIPIO DEL ARCHIVO)
+# LOGIN SIMPLE POR EMAIL AUTORIZADO
 # ======================================================
-from auth.users import (
-    authenticate_user,
-    set_user_status,
-    set_user_role,
-    get_user_by_email,
-    set_user_password
-)
-from auth.passwords import hash_password
+
+from auth.users import authenticate_user
 from auth.db import get_connection
 
 def logout():
@@ -46,12 +40,11 @@ def login_ui():
     st.title("🔐 Acceso al Panel Fiscal")
 
     with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Contraseña", type="password")
+        email = st.text_input("Email autorizado")
         submit = st.form_submit_button("Ingresar")
 
     if submit:
-        user, error = authenticate_user(email.strip(), password)
+        user, error = authenticate_user(email.strip())
 
         if error:
             st.error(error)
@@ -66,7 +59,6 @@ db_user = st.session_state.get("db_user")
 if not db_user:
     login_ui()
     st.stop()
-
 # ======================================================
 # VALIDACIÓN STATUS
 # ======================================================
@@ -75,40 +67,6 @@ if db_user.get("status") in ("pending", "suspended"):
     st.error("Tu usuario no está activo. Contactá al administrador.")
     st.stop()
 
-# ======================================================
-# FORZAR CAMBIO DE PASSWORD (REEMPLAZO SUGERIDO)
-# ======================================================
-if db_user.get("must_change_password"):
-    st.warning("⚠️ Debés cambiar tu contraseña para continuar.")
-
-    with st.form("change_password_form"):
-        p1 = st.text_input("Nueva contraseña", type="password")
-        p2 = st.text_input("Repetir contraseña", type="password")
-        submit_pw = st.form_submit_button("Guardar")
-
-    if submit_pw:
-        if len(p1) < 8:
-            st.error("La contraseña debe tener al menos 8 caracteres.")
-        elif p1 != p2:
-            st.error("Las contraseñas no coinciden.")
-        else:
-            try:
-                # 💡 USAMOS EL SERVICIO EN LUGAR DE SQL MANUAL
-                from auth.users import set_user_password
-                
-                set_user_password(
-                    user_id=db_user["id"],
-                    password=p1,
-                    admin_email="self-service"
-                )
-                
-                st.success("Contraseña actualizada correctamente.")
-                # Actualizamos el estado de la sesión local
-                st.session_state["db_user"]["must_change_password"] = False
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al actualizar: {e}")
-    st.stop()
 
 # ======================================================
 # ESTILOS DE MARCA NEA DATA
@@ -953,7 +911,7 @@ elif seccion == "🛠 Administración":
 
     st.divider()
 
-    # ======================================================
+       # ======================================================
     # ALTA MANUAL DE CLIENTE
     # ======================================================
     st.markdown("## ➕ Alta manual de cliente")
@@ -1003,14 +961,7 @@ elif seccion == "🛠 Administración":
                 cur.close()
                 conn.close()
 
-            temp_password = secrets.token_urlsafe(10)
-
-            set_user_password(
-                user_id=new_user["id"],
-                password=temp_password,
-                admin_email=f"admin:{admin_email}",
-            )
-
+            # Crear o actualizar suscripción
             create_subscription(
                 user_id=new_user["id"],
                 plan_code=plan_new,
@@ -1018,6 +969,7 @@ elif seccion == "🛠 Administración":
                 changed_by=f"admin:{admin_email}",
             )
 
+            # Actualizar status
             set_user_status(
                 user_id=new_user["id"],
                 status=status_new,
@@ -1025,9 +977,7 @@ elif seccion == "🛠 Administración":
             )
 
             st.success("✅ Cliente creado correctamente.")
-            st.info(f"🔑 Contraseña temporal: {temp_password}")
-            st.warning("⚠️ Copiar ahora. Luego solo podrá resetearse.")
-
+            st.info("El usuario podrá ingresar usando su email autorizado.")
             st.rerun()
 # ======================================================
 # FOOTER
