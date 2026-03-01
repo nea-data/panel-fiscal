@@ -72,11 +72,9 @@ if db_user.get("status") in ("pending", "suspended"):
     st.stop()
 
 # ======================================================
-# FORZAR CAMBIO DE PASSWORD
+# FORZAR CAMBIO DE PASSWORD (REEMPLAZO SUGERIDO)
 # ======================================================
-
 if db_user.get("must_change_password"):
-
     st.warning("⚠️ Debés cambiar tu contraseña para continuar.")
 
     with st.form("change_password_form"):
@@ -85,31 +83,27 @@ if db_user.get("must_change_password"):
         submit_pw = st.form_submit_button("Guardar")
 
     if submit_pw:
-
         if len(p1) < 8:
             st.error("La contraseña debe tener al menos 8 caracteres.")
-            st.stop()
-
-        if p1 != p2:
+        elif p1 != p2:
             st.error("Las contraseñas no coinciden.")
-            st.stop()
-
-        new_hash = hash_password(p1)
-
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE users SET password_hash = %s, must_change_password = false WHERE id = %s",
-            (new_hash, db_user["id"])
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        st.success("Contraseña actualizada correctamente.")
-        st.session_state["db_user"]["must_change_password"] = False
-        st.rerun()
-
+        else:
+            try:
+                # 💡 USAMOS EL SERVICIO EN LUGAR DE SQL MANUAL
+                from auth.users import set_user_password
+                
+                set_user_password(
+                    user_id=db_user["id"],
+                    password=p1,
+                    admin_email="self-service"
+                )
+                
+                st.success("Contraseña actualizada correctamente.")
+                # Actualizamos el estado de la sesión local
+                st.session_state["db_user"]["must_change_password"] = False
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al actualizar: {e}")
     st.stop()
 
 # ======================================================
