@@ -18,8 +18,9 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. GOOGLE AUTH (Streamlit Cloud) - FIX PKCE
+# 2. GOOGLE AUTH (Web Application - ESTABLE)
 # ======================================================
+
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -36,7 +37,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
-def _build_flow() -> Flow:
+def build_flow():
     return Flow.from_client_config(
         {
             "web": {
@@ -51,34 +52,19 @@ def _build_flow() -> Flow:
         redirect_uri=REDIRECT_URI,
     )
 
-def _qp_get(qp, key: str) -> str | None:
-    """Streamlit query_params puede devolver str o list[str]. Normalizamos."""
-    if key not in qp:
-        return None
-    v = qp[key]
-    if isinstance(v, list):
-        return v[0] if v else None
-    return v
-
 def google_login_ui():
-    flow = _build_flow()
+    flow = build_flow()
 
-    # ✅ Que la lib maneje PKCE
     auth_url, state = flow.authorization_url(
         prompt="consent",
         include_granted_scopes="true",
-        # PKCE ON:
-        code_challenge_method="S256",
     )
 
-    # Guardamos state y verifier para el callback
     st.session_state["oauth_state"] = state
-    st.session_state["code_verifier"] = flow.code_verifier
 
     st.title("🔐 Acceso al Panel Fiscal")
     st.markdown("Iniciá sesión con tu cuenta Google para continuar.")
 
-    # ⚠️ IMPORTANTE: abrir en la MISMA pestaña para no perder session_state
     st.markdown(
         f"""
         <a href="{auth_url}" target="_self" style="text-decoration:none">
@@ -95,57 +81,42 @@ def google_login_ui():
 
 def handle_google_callback():
     qp = st.query_params
-
-    code = _qp_get(qp, "code")
-    state = _qp_get(qp, "state")
+    code = qp.get("code")
+    state = qp.get("state")
 
     if not code:
         return
 
-    # Si ya tenemos user, limpiamos URL y listo
     if st.session_state.get("user"):
         st.query_params.clear()
         return
 
-    # ✅ Validar state (evita loops y ataques CSRF)
     expected_state = st.session_state.get("oauth_state")
-    if expected_state and state and state != expected_state:
-        st.session_state.pop("oauth_state", None)
-        st.session_state.pop("code_verifier", None)
+    if expected_state and state != expected_state:
         st.query_params.clear()
-        st.error("State inválido. Volvé a intentar el login.")
-        st.stop()
-
-    # ✅ Si falta code_verifier, es porque se perdió la sesión -> reiniciar login
-    code_verifier = st.session_state.get("code_verifier")
-    if not code_verifier:
-        st.query_params.clear()
-        st.error("Se perdió la sesión OAuth (code_verifier). Reintentá el login.")
+        st.error("State inválido. Reintentá login.")
         st.stop()
 
     try:
-        flow = _build_flow()
-        flow.code_verifier = code_verifier  # 👈 clave
-
+        flow = build_flow()
         flow.fetch_token(code=code)
 
-        creds = flow.credentials
-        info = id_token.verify_oauth2_token(
-            creds.id_token,
+        credentials = flow.credentials
+
+        user_info = id_token.verify_oauth2_token(
+            credentials.id_token,
             requests.Request(),
             CLIENT_ID,
         )
 
         st.session_state["user"] = {
-            "email": info.get("email"),
-            "name": info.get("name") or info.get("given_name") or "",
-            "picture": info.get("picture"),
-            "sub": info.get("sub"),
+            "email": user_info.get("email"),
+            "name": user_info.get("name") or "",
+            "picture": user_info.get("picture"),
+            "sub": user_info.get("sub"),
         }
 
-        # Limpieza
         st.session_state.pop("oauth_state", None)
-        st.session_state.pop("code_verifier", None)
         st.query_params.clear()
         st.rerun()
 
@@ -155,7 +126,8 @@ def handle_google_callback():
         st.code(str(e))
         st.stop()
 
-# 1) Procesar callback si vuelve de Google
+
+# Procesar callback
 handle_google_callback()
 
 # ======================================================
