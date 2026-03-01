@@ -46,8 +46,10 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
 # ======================================================
 # LOGIN / UPSERT (Google Auth)
 # ======================================================
+from auth.passwords import hash_password, verify_password
 
-def upsert_user_google(email: str, name: str = "") -> dict:
+
+def authenticate_user(email: str, password: str):
 
     email_clean = email.lower().strip()
 
@@ -55,7 +57,6 @@ def upsert_user_google(email: str, name: str = "") -> dict:
     cur = conn.cursor()
 
     try:
-        # 🔎 Buscar usuario directamente en ESTA conexión
         cur.execute(
             "SELECT * FROM users WHERE email = %s LIMIT 1",
             (email_clean,)
@@ -63,47 +64,28 @@ def upsert_user_google(email: str, name: str = "") -> dict:
         user = cur.fetchone()
 
         if not user:
+            return None, "Usuario no encontrado."
 
-            role = "admin" if email_clean == ADMIN_EMAIL.lower() else "user"
-            status = "active"
+        user = dict(user)
 
-            cur.execute(
-                """
-                INSERT INTO users (email, name, role, status, created_at, last_login_at)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING *
-                """,
-                (email_clean, name or "", role, status)
-            )
+        if user["status"] in ("pending", "suspended"):
+            return None, "Tu usuario no está activo."
 
-            new_user = cur.fetchone()
-            conn.commit()
+        if not user.get("password_hash"):
+            return None, "Usuario sin contraseña asignada."
 
-            # Si no es admin → crear FREE
-            if role != "admin":
-                create_subscription(
-                    user_id=new_user["id"],
-                    plan_code="FREE"
-                )
+        if not verify_password(password, user["password_hash"]):
+            return None, "Email o contraseña incorrectos."
 
-            return dict(new_user)
-
-        # Usuario existente
+        # Actualizar último login
         cur.execute(
-            """
-            UPDATE users
-            SET last_login_at = CURRENT_TIMESTAMP,
-                name = CASE WHEN name IS NULL OR name = '' THEN %s ELSE name END
-            WHERE email = %s
-            RETURNING *
-            """,
-            (name or "", email_clean)
+            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (user["id"],)
         )
-
-        updated_user = cur.fetchone()
         conn.commit()
 
-        return dict(updated_user)
+        user.pop("password_hash", None)
+        return user, None
 
     finally:
         cur.close()
