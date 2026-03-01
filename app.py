@@ -18,8 +18,12 @@ st.set_page_config(
 )
 
 # ======================================================
-# 2. GOOGLE AUTH (Streamlit Cloud)
+# 2. GOOGLE AUTH (Streamlit Cloud) - FIX PKCE
 # ======================================================
+from google_auth_oauthlib.flow import Flow
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
 CLIENT_ID = st.secrets["google"]["client_id"]
 CLIENT_SECRET = st.secrets["google"]["client_secret"]
 REDIRECT_URI = st.secrets["google"]["redirect_uri"]
@@ -32,23 +36,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
-from google_auth_oauthlib.flow import Flow
-import secrets
-import hashlib
-import base64
-
-def _build_flow():
-
-    # 🔐 Generar code_verifier manual
-    code_verifier = base64.urlsafe_b64encode(
-        secrets.token_bytes(64)
-    ).rstrip(b"=").decode("utf-8")
-
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode()).digest()
-    ).rstrip(b"=").decode("utf-8")
-
-    flow = Flow.from_client_config(
+def _build_flow() -> Flow:
+    return Flow.from_client_config(
         {
             "web": {
                 "client_id": CLIENT_ID,
@@ -62,50 +51,85 @@ def _build_flow():
         redirect_uri=REDIRECT_URI,
     )
 
-    # 🔥 Inyectar PKCE manual
-    flow.code_verifier = code_verifier
-    flow.code_challenge = code_challenge
-    flow.code_challenge_method = "S256"
-
-    return flow
+def _qp_get(qp, key: str) -> str | None:
+    """Streamlit query_params puede devolver str o list[str]. Normalizamos."""
+    if key not in qp:
+        return None
+    v = qp[key]
+    if isinstance(v, list):
+        return v[0] if v else None
+    return v
 
 def google_login_ui():
     flow = _build_flow()
 
+    # ✅ Que la lib maneje PKCE
     auth_url, state = flow.authorization_url(
         prompt="consent",
-        access_type="offline",
         include_granted_scopes="true",
-        code_challenge=flow.code_challenge,
+        # PKCE ON:
         code_challenge_method="S256",
     )
 
-    # Guardar PKCE
-    st.session_state["code_verifier"] = flow.code_verifier
+    # Guardamos state y verifier para el callback
     st.session_state["oauth_state"] = state
+    st.session_state["code_verifier"] = flow.code_verifier
 
     st.title("🔐 Acceso al Panel Fiscal")
-    st.link_button("Iniciar sesión con Google", auth_url)
+    st.markdown("Iniciá sesión con tu cuenta Google para continuar.")
+
+    # ⚠️ IMPORTANTE: abrir en la MISMA pestaña para no perder session_state
+    st.markdown(
+        f"""
+        <a href="{auth_url}" target="_self" style="text-decoration:none">
+            <button style="
+                background:#4285F4;color:white;border:none;
+                padding:10px 18px;border-radius:8px;cursor:pointer;
+                font-weight:600">
+                Iniciar sesión con Google
+            </button>
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def handle_google_callback():
-
     qp = st.query_params
 
-    if "code" not in qp:
+    code = _qp_get(qp, "code")
+    state = _qp_get(qp, "state")
+
+    if not code:
         return
+
+    # Si ya tenemos user, limpiamos URL y listo
+    if st.session_state.get("user"):
+        st.query_params.clear()
+        return
+
+    # ✅ Validar state (evita loops y ataques CSRF)
+    expected_state = st.session_state.get("oauth_state")
+    if expected_state and state and state != expected_state:
+        st.session_state.pop("oauth_state", None)
+        st.session_state.pop("code_verifier", None)
+        st.query_params.clear()
+        st.error("State inválido. Volvé a intentar el login.")
+        st.stop()
+
+    # ✅ Si falta code_verifier, es porque se perdió la sesión -> reiniciar login
+    code_verifier = st.session_state.get("code_verifier")
+    if not code_verifier:
+        st.query_params.clear()
+        st.error("Se perdió la sesión OAuth (code_verifier). Reintentá el login.")
+        st.stop()
 
     try:
         flow = _build_flow()
+        flow.code_verifier = code_verifier  # 👈 clave
 
-        # 🔥 Restaurar verifier
-        flow.code_verifier = st.session_state.get("code_verifier")
-
-        flow.fetch_token(
-            code=qp["code"]
-        )
+        flow.fetch_token(code=code)
 
         creds = flow.credentials
-
         info = id_token.verify_oauth2_token(
             creds.id_token,
             requests.Request(),
@@ -119,15 +143,21 @@ def handle_google_callback():
             "sub": info.get("sub"),
         }
 
+        # Limpieza
+        st.session_state.pop("oauth_state", None)
+        st.session_state.pop("code_verifier", None)
         st.query_params.clear()
         st.rerun()
 
     except Exception as e:
+        st.query_params.clear()
         st.error("Error en autenticación Google")
-        st.write(str(e))
+        st.code(str(e))
         st.stop()
+
 # 1) Procesar callback si vuelve de Google
 handle_google_callback()
+
 # ======================================================
 # 3. LÓGICA DE DATOS Y ROL (Supabase)
 # ======================================================
