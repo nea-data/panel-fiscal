@@ -749,9 +749,10 @@ elif seccion == "🛠 Administración":
 
     from auth.guard import require_admin
     from auth.users import (
-        set_user_status,
-        set_user_role,
-        upsert_user_google,
+    set_user_status,
+    set_user_role,
+    get_user_by_email,
+    set_user_password
     )
     from auth.subscriptions import (
         create_subscription,
@@ -991,60 +992,97 @@ elif seccion == "🛠 Administración":
     # ======================================================
     # ALTA MANUAL DE CLIENTE
     # ======================================================
-    st.markdown("## ➕ Alta manual de cliente")
+   st.markdown("## ➕ Alta manual de cliente")
 
-    with st.form("alta_usuario_form"):
+from auth.users import get_user_by_email, set_user_password
+from auth.db import get_connection
+import secrets
 
-        col1, col2 = st.columns(2)
+with st.form("alta_usuario_form"):
 
-        with col1:
-            email_new = st.text_input("Email del cliente")
-            name_new = st.text_input("Nombre / Razón Social")
+    col1, col2 = st.columns(2)
 
-        with col2:
-            plan_new = st.selectbox(
-                "Plan inicial",
-                ["FREE", "PRO", "STUDIO"],
-                index=0
+    with col1:
+        email_new = st.text_input("Email del cliente")
+        name_new = st.text_input("Nombre / Razón Social")
+
+    with col2:
+        plan_new = st.selectbox(
+            "Plan inicial",
+            ["FREE", "PRO", "STUDIO"],
+            index=0
+        )
+
+        status_new = st.selectbox(
+            "Estado inicial",
+            ["active", "pending"],
+            index=0
+        )
+
+    submit_new = st.form_submit_button("Crear cliente")
+
+    if submit_new:
+
+        email_clean = email_new.strip().lower()
+
+        if not email_clean or "@" not in email_clean:
+            st.error("Ingresá un email válido.")
+            st.stop()
+
+        # 🔎 Verificar si ya existe
+        existing_user = get_user_by_email(email_clean)
+
+        if existing_user:
+            st.warning("El usuario ya existe. Se actualizará su plan y status.")
+            new_user = existing_user
+        else:
+            # 🆕 Crear usuario manual
+            conn = get_connection()
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                INSERT INTO users (email, name, role, status, created_at, last_login_at)
+                VALUES (%s, %s, 'user', %s, CURRENT_TIMESTAMP, NULL)
+                RETURNING *
+                """,
+                (email_clean, name_new.strip(), status_new)
             )
 
-            status_new = st.selectbox(
-                "Estado inicial",
-                ["active", "pending"],
-                index=0
-            )
+            new_user = dict(cur.fetchone())
+            conn.commit()
+            cur.close()
+            conn.close()
 
-        submit_new = st.form_submit_button("Crear cliente")
+        # 🔐 Generar contraseña temporal
+        temp_password = secrets.token_urlsafe(10)
 
-        if submit_new:
+        set_user_password(
+            user_id=new_user["id"],
+            password=temp_password,
+            admin_email=f"admin:{admin_email}",
+        )
 
-            if not email_new or "@" not in email_new:
-                st.error("Ingresá un email válido.")
-                st.stop()
+        # 📦 Crear o actualizar suscripción
+        create_subscription(
+            user_id=new_user["id"],
+            plan_code=plan_new,
+            days=None,
+            changed_by=f"admin:{admin_email}",
+        )
 
-            # 1️⃣ Crear o actualizar usuario
-            new_user = upsert_user_google(
-                email=email_new.strip(),
-                name=name_new.strip()
-            )
+        # 🟢 Actualizar status
+        set_user_status(
+            user_id=new_user["id"],
+            status=status_new,
+            admin_email=f"admin:{admin_email}",
+        )
 
-            # 2️⃣ Setear status
-            set_user_status(
-                user_id=new_user["id"],
-                status=status_new,
-                admin_email=f"admin:{admin_email}",
-            )
+        st.success("✅ Cliente creado correctamente.")
+        st.info(f"🔑 Contraseña temporal: {temp_password}")
+        st.warning("⚠️ Copiar ahora. Luego no se puede recuperar (solo resetear).")
 
-            # 3️⃣ Crear suscripción inicial
-            create_subscription(
-                user_id=new_user["id"],
-                plan_code=plan_new,
-                days=None,  # FREE=7, resto=30
-                changed_by=f"admin:{admin_email}",
-            )
-
-            st.success("✅ Cliente creado correctamente.")
-            st.rerun()
+        st.rerun()
 
 # ======================================================
 # FOOTER
