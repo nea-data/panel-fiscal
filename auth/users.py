@@ -159,3 +159,17 @@ def set_user_role(user_id: int, role: str, admin_email: str) -> None:
     finally:
         cur.close()
         conn.close()
+
+
+
+def upsert_user_google(email: str) -> dict:
+    """
+    Función de compatibilidad. 
+    Busca al usuario por email para el flujo que antes era de Google.
+    """
+    user = get_user_by_email(email)
+    if not user:
+        # Si el usuario no existe, podrías crearlo aquí o lanzar error
+        # Por ahora, devolvemos un dict vacío para evitar el crash
+        return {"email": email, "role": "user", "status": "pending"}
+    return user
