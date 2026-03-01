@@ -722,13 +722,7 @@ y no se almacenan ni reutilizan.
 elif seccion == "🛠 Administración":
 
     from auth.guard import require_admin
-    from auth.users import (
-    authenticate_user, 
-    set_user_status, 
-    set_user_role, 
-    get_user_by_email, 
-    set_user_password
-)
+   
     from auth.subscriptions import (
         create_subscription,
         renew_subscription,
