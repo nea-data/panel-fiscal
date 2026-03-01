@@ -25,13 +25,17 @@ from auth.bootstrap import ensure_bootstrap_admin
 ensure_bootstrap_admin()
 
 # ======================================================
-# LOGIN
+# LOGIN Y GESTIÓN DE USUARIOS (AL PRINCIPIO DEL ARCHIVO)
 # ======================================================
-
-from auth.users import authenticate_user
+from auth.users import (
+    authenticate_user,
+    set_user_status,
+    set_user_role,
+    get_user_by_email,
+    set_user_password
+)
 from auth.passwords import hash_password
 from auth.db import get_connection
-
 
 def logout():
     st.session_state.pop("db_user", None)
