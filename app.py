@@ -49,34 +49,35 @@ def _build_flow():
 
 def google_login_ui():
     flow = _build_flow()
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    auth_url, state = flow.authorization_url(prompt="consent")
+
+    st.session_state["oauth_state"] = state
+
     st.title("🔐 Acceso al Panel Fiscal")
-    st.markdown("Iniciá sesión con tu cuenta Google para continuar.")
     st.link_button("Iniciar sesión con Google", auth_url)
+
 
 def handle_google_callback():
 
     qp = st.query_params
 
-    # Solo procesar si hay code
     if "code" not in qp:
-        return
-
-    # Si ya existe usuario en sesión, no reprocesar
-    if st.session_state.get("user"):
-        st.query_params.clear()
         return
 
     try:
         flow = _build_flow()
-        flow.fetch_token(code=qp["code"])
+
+        # 🔥 restaurar state
+        flow.fetch_token(
+            code=qp["code"],
+            state=st.session_state.get("oauth_state")
+        )
 
         creds = flow.credentials
-        req = requests.Request()
 
         info = id_token.verify_oauth2_token(
             creds.id_token,
-            req,
+            requests.Request(),
             CLIENT_ID,
         )
 
@@ -91,11 +92,9 @@ def handle_google_callback():
         st.rerun()
 
     except Exception as e:
-    st.error("Error en autenticación Google")
-    st.write("Detalle técnico:")
-    st.write(str(e))
-    st.stop()
-
+        st.error("Error en autenticación Google")
+        st.write(str(e))
+        st.stop()
 
 # 1) Procesar callback si vuelve de Google
 handle_google_callback()
