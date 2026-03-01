@@ -20,6 +20,10 @@ st.set_page_config(
 from auth.schema import init_db
 init_db()
 
+# ✅ Bootstrap admin (solo si falta)
+from auth.bootstrap import ensure_bootstrap_admin
+ensure_bootstrap_admin()
+
 # ======================================================
 # LOGIN
 # ======================================================
