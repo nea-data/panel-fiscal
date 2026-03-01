@@ -9,5 +9,4 @@ xlsxwriter
 pytz
 pdfplumber
 psycopg2-binary
-passlib[bcrypt]
-bcrypt
+bcrypt==4.2.0
