@@ -104,15 +104,44 @@ def require_login() -> dict:
 
     return user_dict
 
+def require_admin_pin():
+    """
+    Segundo factor simple para administradores (PIN 4 dígitos).
+    """
+
+    ADMIN_PIN = "8372"  # 🔐 CAMBIAR POR TU PIN
+
+    if st.session_state.get("admin_pin_validated"):
+        return True
+
+    st.warning("🔐 Verificación adicional requerida para administrador.")
+
+    pin_input = st.text_input(
+        "Ingresá el código de 4 dígitos",
+        type="password",
+        max_chars=4,
+    )
+
+    if st.button("Validar PIN"):
+        if pin_input == ADMIN_PIN:
+            st.session_state["admin_pin_validated"] = True
+            st.success("Acceso validado.")
+            st.rerun()
+        else:
+            st.error("PIN incorrecto.")
+            st.stop()
+
+    st.stop()
+
 
 def require_admin() -> dict:
-    """
-    Protege rutas administrativas y de configuración global.
-    """
     user = require_login()
 
     if user.get("role") != "admin":
-        st.error("🛑 Acceso denegado: Se requieren permisos de administrador de NEA DATA.")
+        st.error("🛑 Acceso denegado: Se requieren permisos de administrador.")
         st.stop()
+
+    # 🔐 Segundo factor
+    require_admin_pin()
 
     return user
