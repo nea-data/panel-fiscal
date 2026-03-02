@@ -681,10 +681,9 @@ elif seccion == "🛠 Administración":
     from auth.guard import require_admin
    
     from auth.subscriptions import (
-        create_subscription,
-        renew_subscription,
-        change_plan,
-        suspend_subscription,
+    create_subscription,
+    renew_subscription,
+    suspend_subscription,
     )
     from auth.limits import get_current_period
     from auth.extras import grant_usage_extras, get_usage_extras
