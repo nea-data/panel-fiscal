@@ -762,12 +762,20 @@ elif seccion == "🛠 Administración":
     c3.metric("Días restantes", sel.get("days_left") or "-")
 
     last_login = sel.get("last_login_at")
-    if last_login:
-        last_login = pd.to_datetime(last_login).strftime("%d/%m/%Y %H:%M")
-    else:
-        last_login = "Nunca"
 
-    c4.metric("Último login", last_login)
+    if last_login is None:
+      last_login_str = "Nunca"
+    else:
+      try:
+         dt = pd.to_datetime(last_login, errors="coerce")
+         if pd.isna(dt):
+             last_login_str = "Nunca"
+         else:
+            last_login_str = dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        last_login_str = "Nunca"
+
+    c4.metric("Último login", last_login_str)
 
     # ======================================================
     # CONSUMO
