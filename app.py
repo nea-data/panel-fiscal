@@ -772,8 +772,8 @@ elif seccion == "🛠 Administración":
              last_login_str = "Nunca"
          else:
             last_login_str = dt.strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        last_login_str = "Nunca"
+      except Exception:
+         last_login_str = "Nunca"
 
     c4.metric("Último login", last_login_str)
 
